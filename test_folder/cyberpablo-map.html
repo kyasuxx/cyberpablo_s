@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CyberPablo - San Pablo City Cybercrime Heatmap</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js" />
+
+  <style>
+    body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+    #map { height: 100vh; width: 100%; }
+    .header {
+      position: absolute; top: 10px; left: 10px; z-index: 1000;
+      background: rgba(0, 51, 102, 0.9); color: white; padding: 10px 15px;
+      border-radius: 8px; font-size: 18px; font-weight: bold;
+    }
+    .legend {
+      position: absolute; bottom: 20px; left: 20px; z-index: 1000;
+      background: white; padding: 10px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.3);
+    }
+    .legend i { width: 18px; height: 18px; float: left; margin-right: 8px; opacity: 0.8; }
+  </style>
+</head>
+<body>
+
+  <div class="header">CyberPablo - San Pablo City Cybercrime Heatmap</div>
+
+  <div id="map"></div>
+
+  <div class="legend">
+    <div><i style="background:#ff0000"></i> Phishing</div>
+    <div><i style="background:#ff8800"></i> Online Fraud</div>
+    <div><i style="background:#ffff00"></i> Identity Theft</div>
+    <div><i style="background:#ff00ff"></i> Cyber Harassment</div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
+  <script>
+    // === 1. Initialize Map (San Pablo City Center) ===
+    const map = L.map('map').setView([14.0702, 121.3256], 12);
+
+    // === 2. Add OpenStreetMap Tiles (Free & Offline-Capable) ===
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 18
+    }).addTo(map);
+
+    // === 3. Add San Pablo City Boundary (Simplified Polygon) ===
+    const sanPabloBoundary = {
+      "type": "Feature",
+      "properties": { "name": "San Pablo City" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [121.288, 14.128], [121.355, 14.128], [121.355, 14.020],
+          [121.288, 14.020], [121.288, 14.128]
+        ]]
+      }
+    };
+
+    L.geoJSON(sanPabloBoundary, {
+      style: { color: "#003366", weight: 4, fillOpacity: 0.05 }
+    }).addTo(map);
+
+    // === 4. Simulated Cybercrime Incidents (100 cases) ===
+    const incidents = [
+      // Format: [lat, lng, type, barangay, date]
+      [14.0700, 121.3250, "Phishing", "Brgy VI-A", "2025-03-15"],
+      [14.0750, 121.3300, "Online Fraud", "Brgy II-C", "2025-03-14"],
+      [14.0650, 121.3200, "Identity Theft", "Brgy VII-B", "2025-03-13"],
+      [14.0800, 121.3350, "Cyber Harassment", "Brgy I-A", "2025-03-12"],
+      [14.0680, 121.3280, "Phishing", "Brgy V-B", "2025-03-11"],
+      // ... Add up to 100 (or load from API later)
+    ];
+
+    // Add 95 more random points inside San Pablo
+    for (let i = 5; i < 100; i++) {
+      const lat = 14.0702 + (Math.random() - 0.5) * 0.08;
+      const lng = 121.3256 + (Math.random() - 0.5) * 0.08;
+      const types = ["Phishing", "Online Fraud", "Identity Theft", "Cyber Harassment"];
+      const brgys = ["Brgy VI-A", "Brgy II-C", "Brgy VII-B", "Brgy I-A", "Brgy V-B"];
+      incidents.push([
+        lat, lng,
+        types[Math.floor(Math.random() * 4)],
+        brgys[Math.floor(Math.random() * 5)],
+        `2025-03-${String(10 - (i % 10)).padStart(2, '0')}`
+      ]);
+    }
+
+    // === 5. Plot Individual Incidents ===
+    const markers = L.layerGroup();
+    incidents.forEach(inc => {
+      const [lat, lng, type, brgy, date] = inc;
+      const color = {
+        "Phishing": "#ff0000",
+        "Online Fraud": "#ff8800",
+        "Identity Theft": "#ffff00",
+        "Cyber Harassment": "#ff00ff"
+      }[type];
+
+      L.circleMarker([lat, lng], {
+        radius: 6,
+        color: color,
+        fillOpacity: 0.9
+      }).bindPopup(`
+        <b>${type}</b><br>
+        Barangay: ${brgy}<br>
+        Date: ${date}
+      `).addTo(markers);
+    });
+    markers.addTo(map);
+
+    // === 6. Add Heatmap Layer ===
+    const heatPoints = incidents.map(inc => [inc[0], inc[1], 1]);
+    L.heatLayer(heatPoints, {
+      radius: 25,
+      blur: 15,
+      maxZoom: 16,
+      gradient: { 0.4: 'yellow', 0.65: 'orange', 1: 'red' }
+    }).addTo(map);
+
+    // === 7. Fit Map to San Pablo Bounds ===
+    map.fitBounds([
+      [14.020, 121.288],
+      [14.128, 121.355]
+    ]);
+  </script>
+</body>
+</html>

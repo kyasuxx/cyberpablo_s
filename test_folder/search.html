@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CyberPablo - Search & Filter</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    body { margin: 0; font-family: Arial; }
+    .container { display: flex; height: 100vh; }
+    .sidebar { width: 300px; padding: 20px; background: #f4f4f4; overflow-y: auto; }
+    .map { flex: 1; }
+    input, select { width: 100%; padding: 10px; margin: 10px 0; font-size: 16px; }
+    button { padding: 10px; background: #003366; color: white; border: none; cursor: pointer; }
+    button:hover { background: #002244; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="sidebar">
+      <h2>Search Incidents</h2>
+      <input type="text" id="searchText" placeholder="e.g., Brgy VI-A or Phishing" />
+      <select id="typeFilter">
+        <option value="">All Types</option>
+        <option>Phishing</option>
+        <option>Online Fraud</option>
+        <option>Identity Theft</option>
+        <option>Cyber Harassment</option>
+      </select>
+      <button onclick="applyFilters()">Apply Filter</button>
+      <p><strong>Results:</strong> <span id="count">100</span></p>
+    </div>
+    <div id="map" class="map"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([14.0702, 121.3256], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    // Simulated Data
+    let incidents = [];
+    for (let i = 0; i < 100; i++) {
+      const lat = 14.0702 + (Math.random() - 0.5) * 0.08;
+      const lng = 121.3256 + (Math.random() - 0.5) * 0.08;
+      const types = ["Phishing", "Online Fraud", "Identity Theft", "Cyber Harassment"];
+      const brgys = ["Brgy VI-A", "Brgy II-C", "Brgy VII-B", "Brgy I-A", "Brgy V-B"];
+      incidents.push({ lat, lng, type: types[i%4], barangay: brgys[i%5], date: "2025-03-15" });
+    }
+
+    let markers = L.layerGroup().addTo(map);
+    function renderMarkers(data) {
+      markers.clearLayers();
+      data.forEach(inc => {
+        const color = { "Phishing": "red", "Online Fraud": "orange", "Identity Theft": "yellow", "Cyber Harassment": "purple" }[inc.type];
+        L.circleMarker([inc.lat, inc.lng], { radius: 6, color }).addTo(markers)
+          .bindPopup(`<b>${inc.type}</b><br>${inc.barangay}<br>${inc.date}`);
+      });
+      document.getElementById("count").textContent = data.length;
+    }
+    renderMarkers(incidents);
+
+    function applyFilters() {
+      const text = document.getElementById("searchText").value.toLowerCase();
+      const type = document.getElementById("typeFilter").value;
+      const filtered = incidents.filter(inc => {
+        const matchesText = inc.barangay.toLowerCase().includes(text) || inc.type.toLowerCase().includes(text);
+        const matchesType = !type || inc.type === type;
+        return matchesText && matchesType;
+      });
+      renderMarkers(filtered);
+    }
+  </script>
+</body>
+</html>

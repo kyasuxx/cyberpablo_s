@@ -1,0 +1,64 @@
+@mixin mediaQuery($width: $break-sm){
+    @media screen and (min-width: $width){
+        @content;
+    }
+}
+
+// @media screen and (max-width: $break-sm){
+
+// }
+
+@include mediaQuery($break-md){
+
+}
+
+
+
+.kamote__wrapper{
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-gap: 5rem;
+}
+
+@mixin gridEven($cols:1,$gap:1rem){
+    display: grid;
+    grid-template-columns: repeat($cols, 1fr);
+    grid-gap: $gap;
+}
+
+@mixin centerAll(){
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// @mixin gridUneven($cols: (), $gap: 1rem) {
+//     display: grid;
+//     grid-template-columns: repeat($cols, 1fr 2fr 3fr);
+//     grid-gap: $gap;
+//   }
+  
+//   .grid-container {
+//     @include gridUneven(3, 1rem);
+  
+//     p {
+//       border: 1px solid black; 
+//       padding: 1rem; 
+//     }
+//   }

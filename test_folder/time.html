@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CyberPablo - Time Slider</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    body { margin: 0; font-family: Arial; }
+    .container { display: flex; flex-direction: column; height: 100vh; }
+    .controls { padding: 15px; background: #003366; color: white; text-align: center; }
+    .map { flex: 1; }
+    input[type="range"] { width: 80%; margin: 10px 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="controls">
+      <h2>Time Slider: <span id="month">March 2025</span></h2>
+      <input type="range" id="monthSlider" min="1" max="12" value="3" />
+    </div>
+    <div id="map" class="map"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([14.0702, 121.3256], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let incidents = [];
+    for (let i = 0; i < 100; i++) {
+      const lat = 14.0702 + (Math.random() - 0.5) * 0.08;
+      const lng = 121.3256 + (Math.random() - 0.5) * 0.08;
+      const month = Math.floor(Math.random() * 12) + 1;
+      incidents.push({ lat, lng, month, type: ["Phishing", "Fraud", "Theft", "Harassment"][i%4] });
+    }
+
+    let markers = L.layerGroup().addTo(map);
+    function updateMap() {
+      const month = document.getElementById("monthSlider").value;
+      document.getElementById("month").textContent = months[month - 1] + " 2025";
+      markers.clearLayers();
+      incidents.filter(inc => inc.month == month).forEach(inc => {
+        L.circleMarker([inc.lat, inc.lng], { radius: 6, color: "red" }).addTo(markers)
+          .bindPopup(`<b>${inc.type}</b><br>${months[month-1]} 2025`);
+      });
+    }
+    document.getElementById("monthSlider").addEventListener("input", updateMap);
+    updateMap();
+  </script>
+</body>
+</html>
