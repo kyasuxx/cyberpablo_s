@@ -46,65 +46,32 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../assets/scss/main.css">
     <title>CyberPablo Login</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: #f0f2f5;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-        }
-        .box {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            width: 350px;
-            text-align: center;
-        }
-        h2 { color: #003366; margin-bottom: 20px; }
-        input {
-            width: 100%;
-            padding: 12px;
-            margin: 10px 0;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            box-sizing: border-box;
-        }
-        button {
-            width: 100%;
-            padding: 12px;
-            background: #003366;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            font-size: 16px;
-            cursor: pointer;
-        }
-        button:hover { background: #002244; }
-        .error { color: red; margin: 10px 0; }
-        small { color: #666; }
+    
+        
+        
     </style>
 </head>
 <body>
-    <div class="box">
-        <h2>CyberPablo</h2>
-        <p><strong>San Pablo City Cybercrime System</strong></p>
+    <main class="login">
+        <div class="box">
+            <h2>CyberPablo</h2>
+            <p><strong>San Pablo City Cybercrime System</strong></p>
 
-        <?php if ($error): ?>
-            <p class="error"><?= htmlspecialchars($error) ?></p>
-        <?php endif; ?>
+            <?php if ($error): ?>
+                <p class="error"><?= htmlspecialchars($error) ?></p>
+            <?php endif; ?>
 
-        <form method="POST">
-            <input type="text" name="username" placeholder="Username" required>
-            <input type="password" name="password" placeholder="Password" required>
-            <button type="submit">Login</button>
-        </form>
+            <form method="POST">
+                <input type="text" name="username" placeholder="Username" required>
+                <input type="password" name="password" placeholder="Password" required>
+                <button type="submit">Login</button>
+            </form>
 
-        <p><small>Test: <b>admin</b> / <b>ChangeMe123!</b></small></p>
-    </div>
+            <p><small>Test: <b>admin</b> / <b>ChangeMe123!</b></small></p>
+        </div>
+    </main>
 </body>
 </html>

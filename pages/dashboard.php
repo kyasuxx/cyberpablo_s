@@ -27,59 +27,46 @@ $stmt->execute();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CyberPablo Dashboard</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="../assets/scss/main.css">
     <style>
         body { margin: 0; font-family: Arial; background: #f4f6f9; }
-        .header {
-            background: #003366; color: white; padding: 15px; text-align: center;
-            display: flex; justify-content: space-between; align-items: center;
-        }
-        .header h1 { margin: 0; font-size: 24px; }
-        .logout { color: #ffcc00; text-decoration: none; font-weight: bold; }
-        .container { display: flex; height: calc(100vh - 70px); }
-        .sidebar { width: 350px; background: white; padding: 20px; box-shadow: 0 0 10px rgba(0,0,0,0.1); overflow-y: auto; }
-        .map { flex: 1; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
-        th { background: #003366; color: white; }
-        .search { width: 100%; padding: 10px; margin: 15px 0; font-size: 16px; }
+        
     </style>
 </head>
+
 <body>
     <div class="header">
+        <button class="sidebar-toggle" onclick="toggleSidebar()">☰ Menu</button>
         <h1>CYBERPABLO</h1>
         <div>
+            <?php if (isset($_GET['lat'])): ?>
+                <a href="cases.php" style="color:#ffcc00; margin-right:15px;">← Back to Cases</a>
+            <?php endif; ?>
             <span>Welcome, <strong><?= htmlspecialchars($username) ?></strong> (<?= $role ?>)</span> |
             <a href="logout.php" class="logout">Logout</a>
         </div>
     </div>
 
     <div class="container">
-        <div class="sidebar">
-            <h3>Recent Cases</h3>
-            <input type="text" class="search" placeholder="Search by type or barangay..." id="searchInput">
-
-            <table id="casesTable">
-                <tr><th>Case No</th><th>Type</th><th>Barangay</th><th>Date</th></tr>
-                <?php
-                $result = $conn->query("SELECT case_no, incident_type, barangay, incident_date FROM incidents ORDER BY incident_date DESC LIMIT 10");
-                while ($row = $result->fetch_assoc()) {
-                    echo "<tr>
-                        <td>{$row['case_no']}</td>
-                        <td>{$row['incident_type']}</td>
-                        <td>{$row['barangay']}</td>
-                        <td>" . date('M d, Y', strtotime($row['incident_date'])) . "</td>
-                    </tr>";
-                }
-                ?>
-            </table>
+        <div class="sidebar" id="sidebar">
+           <a href="cases.php">Cases</a>
         </div>
         <div id="map" class="map"></div>
     </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+    // Initialize map
     const map = L.map('map').setView([14.0702, 121.3256], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    // Check if there are coordinates in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const targetLat = urlParams.get('lat');
+    const targetLng = urlParams.get('lng');
+    const targetCase = urlParams.get('case');
+    
+    let highlightMarker = null;
 
     fetch('../api/incidents.php')
         .then(response => {
@@ -90,7 +77,7 @@ $stmt->execute();
             console.log('Loaded incidents:', data);
 
             data.forEach(inc => {
-                L.circleMarker([inc.lat, inc.lng], {
+                const marker = L.circleMarker([inc.lat, inc.lng], {
                     radius: 7,
                     color: '#d32f2f',
                     fillColor: '#f44336',
@@ -100,12 +87,67 @@ $stmt->execute();
                     <b>Type:</b> ${inc.incident_type}<br>
                     <b>Barangay:</b> ${inc.barangay}
                 `).addTo(map);
+
+                // If this is the target case, highlight it
+                if (targetCase && inc.case_no === targetCase) {
+                    // Change the marker style to highlight
+                    marker.setStyle({
+                        radius: 12,
+                        color: '#ffcc00',
+                        fillColor: '#ffd54f',
+                        fillOpacity: 1,
+                        weight: 3
+                    });
+                    highlightMarker = marker;
+                }
             });
+
+            // If coordinates were passed, zoom to that location
+            if (targetLat && targetLng) {
+                const lat = parseFloat(targetLat);
+                const lng = parseFloat(targetLng);
+                
+                // Zoom to the location
+                map.setView([lat, lng], 17);
+                
+                // Open popup if we found the marker
+                if (highlightMarker) {
+                    setTimeout(() => {
+                        highlightMarker.openPopup();
+                    }, 500);
+                } else {
+                    // If marker wasn't found in data, create a temporary one
+                    const tempMarker = L.circleMarker([lat, lng], {
+                        radius: 12,
+                        color: '#ffcc00',
+                        fillColor: '#ffd54f',
+                        fillOpacity: 1,
+                        weight: 3
+                    }).bindPopup(`
+                        <b>${targetCase || 'Selected Case'}</b><br>
+                        <i>Location pinpointed from Cases page</i>
+                    `).addTo(map);
+                    
+                    setTimeout(() => {
+                        tempMarker.openPopup();
+                    }, 500);
+                }
+            }
         })
         .catch(err => {
             console.error('Map Error:', err);
             alert('Map failed. Check console.');
         });
+
+    // Sidebar Toggle
+    const sidebar = document.querySelector('.sidebar');
+
+    function toggleSidebar() {
+        sidebar.classList.toggle('collapsed');
+        setTimeout(() => {
+            map.invalidateSize();
+        }, 350);
+    }
 </script>
 </body>
 </html>
