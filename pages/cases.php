@@ -87,6 +87,10 @@ $barangay_result = $conn->query("SELECT official_name, alt_name FROM barangays O
         .export { background: #d32f2f; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; float: right; }
         .mini-map { height: 200px; border: 1px solid #ddd; border-radius: 8px; margin-top: 10px; }
         .alt-name { font-size: 0.85em; color: #666; }
+        .case-row { cursor: pointer; transition: background 0.2s; }
+        .case-row:hover { background: #e3f2fd !important; }
+        .details-row { background: #f9f9f9; }
+        .details-row td { border-top: 2px solid #003366; }
     </style>
 </head>
 <body>
@@ -96,7 +100,7 @@ $barangay_result = $conn->query("SELECT official_name, alt_name FROM barangays O
             <a href="dashboard.php">Map</a>
             <a href="cases.php">Cases</a>
             <?php if ($_SESSION['role'] === 'admin'): ?>
-                <a href="import_excel.php">Import Excel</a>
+                <a href="import_cases.php">Import Excel</a>
             <?php endif; ?>
             <a href="logout.php">Logout</a>
         </div>
@@ -152,48 +156,131 @@ $barangay_result = $conn->query("SELECT official_name, alt_name FROM barangays O
         </div>
 
         <!-- Table -->
-        <table>
-            <tr>
-                <th>Case No</th>
-                <th>Type</th>
-                <th>Accused</th>
-                <th>Complainant</th>
-                <th>Barangay</th>
-                <th>Date Filed</th>
-                <th>Status</th>
-                <th>Map</th>
-            </tr>
-            <?php while ($row = $result->fetch_assoc()): ?>
-            <tr onclick="showOnMap(<?= $row['lat'] ?? 14.0702 ?>, <?= $row['lng'] ?? 121.3256 ?>, '<?= addslashes($row['case_no']) ?>')">
-                <td><strong><?= $row['case_no'] ?></strong></td>
-                <td><?= $row['incident_type'] ?></td>
-                <td><?= htmlspecialchars($row['accused'] ?? '—') ?></td>
-                <td><?= htmlspecialchars($row['complainant'] ?? '—') ?></td>
-                <td>
-                    <?= htmlspecialchars($row['official_name'] ?? $row['barangay']) ?>
-                    <?php if ($row['alt_name'] && $row['official_name']): ?>
-                        <div class="alt-name">(<?= $row['alt_name'] ?>)</div>
-                    <?php endif; ?>
-                </td>
-                <td><?= $row['date_filed'] ? date('M d, Y', strtotime($row['date_filed'])) : '—' ?></td>
-                <td>
-                    <span class="status-<?= strtolower(str_replace(' ', '-', $row['status'])) ?>">
-                        <?= $row['status'] ?>
-                    </span>
-                </td>
-                <td>
-                    <?php if ($row['lat'] && $row['lng']): ?>
-                        <a href="dashboard.php?lat=<?= $row['lat'] ?>&lng=<?= $row['lng'] ?>&case=<?= urlencode($row['case_no']) ?>" 
-                           style="color:green; text-decoration:none; font-weight:bold;">
-                            View on Map
-                        </a>
-                    <?php else: ?>
-                        <span style="color:orange;">No GPS</span>
-                    <?php endif; ?>
-                </td>
-            </tr>
-            <?php endwhile; ?>
-        </table>
+<table>
+    <tr>
+        <th>Case No</th>
+        <th>Type</th>
+        <th>Accused</th>
+        <th>Complainant</th>
+        <th>Barangay</th>
+        <th>Date Filed</th>
+        <th>Status</th>
+        <th>Map</th>
+    </tr>
+    <?php 
+    $barangay_result->data_seek(0); // Reset pointer
+    while ($row = $result->fetch_assoc()): 
+        // Fetch prosecutor name
+        $prosecutor_name = '—';
+        if ($row['prosecutor_id']) {
+            $pstmt = $conn->prepare("SELECT full_name FROM prosecutors WHERE id = ?");
+            $pstmt->bind_param("i", $row['prosecutor_id']);
+            $pstmt->execute();
+            $prosecutor_name = $pstmt->get_result()->fetch_row()[0] ?? '—';
+        }
+
+        // Fetch history
+        $hist_stmt = $conn->prepare("
+            SELECT h.*, u.username AS full_name 
+            FROM case_status_history h 
+            LEFT JOIN users u ON h.changed_by = u.id 
+            WHERE h.incident_id = ? 
+            ORDER BY h.changed_at DESC
+        ");
+        $hist_stmt->bind_param("i", $row['id']);
+        $hist_stmt->execute();
+        $history = $hist_stmt->get_result();
+
+        // Fetch attachments
+        $att_stmt = $conn->prepare("SELECT * FROM attachments WHERE incident_id = ?");
+        $att_stmt->bind_param("i", $row['id']);
+        $att_stmt->execute();
+        $attachments = $att_stmt->get_result();
+    ?>
+    <tr class="case-row" onclick="toggleDetails(<?= $row['id'] ?>)">
+        <td><strong><?= $row['case_no'] ?></strong></td>
+        <td><?= $row['incident_type'] ?></td>
+        <td><?= htmlspecialchars($row['accused'] ?? '—') ?></td>
+        <td><?= htmlspecialchars($row['complainant'] ?? '—') ?></td>
+        <td>
+            <?= htmlspecialchars($row['official_name'] ?? $row['barangay']) ?>
+            <?php if ($row['alt_name'] && $row['official_name']): ?>
+                <div class="alt-name">(<?= $row['alt_name'] ?>)</div>
+            <?php endif; ?>
+        </td>
+        <td><?= $row['date_filed'] ? date('M d, Y', strtotime($row['date_filed'])) : '—' ?></td>
+        <td>
+            <span class="status-<?= strtolower(str_replace(' ', '-', $row['status'])) ?>">
+                <?= $row['status'] ?>
+            </span>
+        </td>
+        <td>
+            <?php if ($row['lat'] && $row['lng']): ?>
+                <a href="dashboard.php?lat=<?= $row['lat'] ?>&lng=<?= $row['lng'] ?>&case=<?= urlencode($row['case_no']) ?>" 
+                   style="color:green; font-weight:bold; text-decoration:none;">View on Map</a>
+            <?php else: ?>
+                <span style="color:orange;">No GPS</span>
+            <?php endif; ?>
+        </td>
+    </tr>
+    <!-- EXPANDABLE ROW -->
+    <tr id="details-<?= $row['id'] ?>" class="details-row" style="display:none;">
+        <td colspan="8" style="padding:20px; background:#f9f9f9; border-top:2px solid #003366;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; font-size:0.95em;">
+                <div><strong>Prosecutor:</strong> <?= $prosecutor_name ?></div>
+                <div><strong>NPS Docket:</strong> <?= $row['nps_docket'] ?? '—' ?></div>
+                <div><strong>Date Committed:</strong> <?= $row['incident_date'] ? date('M d, Y', strtotime($row['incident_date'])) : '—' ?></div>
+                <div><strong>Bail Recommended:</strong> <?= $row['bail_recommended'] ? '₱'.number_format($row['bail_recommended']) : '—' ?></div>
+                <div><strong>Modus Operandi:</strong> <?= nl2br(htmlspecialchars($row['modus_operandi'] ?? '—')) ?></div>
+                <div><strong>Evidence Notes:</strong> <?= nl2br(htmlspecialchars($row['evidence_notes'] ?? '—')) ?></div>
+            </div>
+
+            <div style="margin-top:15px;">
+                <h4 style="margin:10px 0 5px;">Attachments</h4>
+                <?php if ($attachments->num_rows > 0): ?>
+                    <ul style="margin:5px 0; padding-left:20px;">
+                    <?php while ($a = $attachments->fetch_assoc()): ?>
+                        <li><a href="<?= htmlspecialchars($a['file_path']) ?>" target="_blank"><?= htmlspecialchars($a['file_name']) ?></a>
+                            <?php if ($a['description']): ?> — <?= htmlspecialchars($a['description']) ?><?php endif; ?>
+                        </li>
+                    <?php endwhile; ?>
+                    </ul>
+                <?php else: ?>
+                    <p style="color:#666; font-style:italic; margin:5px 0;">No attachments</p>
+                <?php endif; ?>
+            </div>
+
+            <div style="margin-top:15px;">
+                <h4 style="margin:10px 0 5px;">Status History</h4>
+                <?php if ($history->num_rows > 0): ?>
+                    <ol style="margin:5px 0; padding-left:20px; font-size:0.9em;">
+                    <?php while ($h = $history->fetch_assoc()): ?>
+                        <li>
+                            <strong><?= date('M d, Y H:i', strtotime($h['changed_at'])) ?></strong>: 
+                            <?= htmlspecialchars($h['status']) ?> by <?= htmlspecialchars($h['full_name']) ?>
+                            <?php if ($h['remarks']): ?> — <em><?= htmlspecialchars($h['remarks']) ?></em><?php endif; ?>
+                        </li>
+                    <?php endwhile; ?>
+                    </ol>
+                <?php else: ?>
+                    <p style="color:#666; font-style:italic; margin:5px 0;">No history</p>
+                <?php endif; ?>
+            </div>
+
+            <div style="margin-top:15px; text-align:right;">
+                <a href="edit_case.php?id=<?= $row['id'] ?>" 
+                   style="background:#003366; color:white; padding:8px 15px; border-radius:5px; text-decoration:none; margin-right:5px;">
+                   Edit Case
+                </a>
+                <a href="print_blotter.php?id=<?= $row['id'] ?>" target="_blank"
+                   style="background:#d32f2f; color:white; padding:8px 15px; border-radius:5px; text-decoration:none;">
+                   Print Blotter
+                </a>
+            </div>
+        </td>
+    </tr>
+    <?php endwhile; ?>
+</table>
 
         <!-- Pagination -->
         <div class="pagination">
@@ -226,6 +313,11 @@ $barangay_result = $conn->query("SELECT official_name, alt_name FROM barangays O
                 radius: 8, color: '#d32f2f', fillColor: '#f44336', fillOpacity: 0.9
             }).addTo(map).bindPopup(`<b>${title}</b>`).openPopup();
         }
+        function toggleDetails(id) {
+            const row = document.getElementById('details-' + id);
+            row.style.display = row.style.display === 'table-row' ? 'none' : 'table-row';
+        }
     </script>
+
 </body>
 </html>
