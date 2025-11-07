@@ -253,12 +253,12 @@ $stmt->execute();
 
 <body>
     <div class="header">
-        <h1>🔐 CYBERPABLO</h1>
+        <h1>CYBERPABLO</h1>
         <div class="header-right">
             <div class="nav-links">
-                <a href="cases.php">📋 Cases</a>
+                <a href="cases.php">Cases</a>
                 <?php if ($role === 'admin'): ?>
-                    <a href="import_cases.php">📤 Import</a>
+                    <a href="import_cases.php">Import</a>
                 <?php endif; ?>
             </div>
             <div>
@@ -274,7 +274,7 @@ $stmt->execute();
         <div class="map-controls">
             <!-- Visualization Controls -->
             <div class="control-panel">
-                <h3>🎨 Visualization</h3>
+                <h3>Visualization</h3>
                 <button class="toggle-btn active" id="heatmapToggle">
                     Heatmap Mode
                 </button>
@@ -282,7 +282,7 @@ $stmt->execute();
             
             <!-- Filters -->
             <div class="control-panel">
-                <h3>🔍 Filters</h3>
+                <h3>Filters</h3>
                 <div class="control-group">
                     <label>Incident Type:</label>
                     <select id="typeFilter">
@@ -312,7 +312,7 @@ $stmt->execute();
             
             <!-- Stats -->
             <div class="stats-panel">
-                <h3 style="color: #003366; margin-bottom: 10px;">📊 Statistics</h3>
+                <h3 style="color: #003366; margin-bottom: 10px;">Statistics</h3>
                 <div class="stat-item">
                     <span class="stat-label">Total Incidents</span>
                     <span class="stat-value" id="totalStat">0</span>
@@ -376,63 +376,91 @@ $stmt->execute();
         'Others': '#607d8b'
     };
 
-    // Load incidents
-    fetch('../api/incidents.php')
-        .then(res => res.json())
-        .then(data => {
-            allIncidents = data;
-            renderMap(data);
-            updateStats(data);
-        })
-        .catch(err => console.error('Error:', err));
+
+
+    // Load incidents with optional filters
+    function loadIncidents() {
+        const url = new URL('../api/incidents.php', window.location.href);
+        
+        const type = document.getElementById('typeFilter').value;
+        const status = document.getElementById('statusFilter').value;
+
+        if (type) url.searchParams.set('type', type);
+        if (status) url.searchParams.set('status', status);
+
+        fetch(url)
+            .then(res => {
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return res.json();
+            })
+            .then(data => {
+                allIncidents = data;
+                filterIncidents(); // Apply date filters
+            })
+            .catch(err => {
+                console.error('API Error:', err);
+                alert('Failed to load data. Check API path.');
+            });
+    }
+
+    // Initial load
+    loadIncidents();
 
     function renderMap(incidents) {
-        // Clear existing layers
-        if (heatmapLayer) map.removeLayer(heatmapLayer);
-        if (markerClusterGroup) map.removeLayer(markerClusterGroup);
+    // Clear existing layers
+    if (heatmapLayer) map.removeLayer(heatmapLayer);
+    if (markerClusterGroup) map.removeLayer(markerClusterGroup);
 
-        if (isHeatmapMode) {
-            // Heatmap visualization
-            const heatData = incidents.map(inc => [inc.lat, inc.lng, 0.8]);
-            heatmapLayer = L.heatLayer(heatData, {
-                radius: 25,
-                blur: 15,
-                maxZoom: 17,
-                gradient: {
-                    0.0: 'blue',
-                    0.5: 'lime',
-                    0.7: 'yellow',
-                    1.0: 'red'
-                }
-            }).addTo(map);
-        } else {
-            // Marker cluster visualization
-            markerClusterGroup = L.markerClusterGroup({
-                maxClusterRadius: 50,
-                spiderfyOnMaxZoom: true,
-                showCoverageOnHover: false
-            });
+    // Filter valid incidents
+    const validIncidents = incidents.filter(inc => {
+        const lat = parseFloat(inc.lat);
+        const lng = parseFloat(inc.lng);
+        return !isNaN(lat) && !isNaN(lng) && 
+               lat !== 0 && lng !== 0 && 
+               lat >= -90 && lat <= 90 && 
+               lng >= -180 && lng <= 180;
+    });
 
-            incidents.forEach(inc => {
-                const marker = L.circleMarker([inc.lat, inc.lng], {
-                    radius: 8,
-                    fillColor: typeColors[inc.incident_type] || '#607d8b',
-                    color: '#fff',
-                    weight: 2,
-                    fillOpacity: 0.8
-                }).bindPopup(`
-                    <div class="popup-title">${inc.case_no}</div>
-                    <div class="popup-detail"><strong>Type:</strong> ${inc.incident_type}</div>
-                    <div class="popup-detail"><strong>Barangay:</strong> ${inc.barangay}</div>
-                    <div class="popup-detail"><a href="cases.php?search=${inc.case_no}" style="color: #003366;">View Details →</a></div>
-                `);
-                
-                markerClusterGroup.addLayer(marker);
-            });
-
-            map.addLayer(markerClusterGroup);
-        }
+    if (validIncidents.length === 0) {
+        // Optional: Show message
+        alert('No incidents with valid GPS coordinates.');
+        return;
     }
+
+    if (isHeatmapMode) {
+        const heatData = validIncidents.map(inc => [inc.lat, inc.lng, 0.8]);
+        heatmapLayer = L.heatLayer(heatData, {
+            radius: 25,
+            blur: 15,
+            maxZoom: 17,
+            gradient: { 0.0: 'blue', 0.5: 'lime', 0.7: 'yellow', 1.0: 'red' }
+        }).addTo(map);
+    } else {
+        markerClusterGroup = L.markerClusterGroup({
+            maxClusterRadius: 50,
+            spiderfyOnMaxZoom: true,
+            showCoverageOnHover: false
+        });
+
+        validIncidents.forEach(inc => {
+            const marker = L.circleMarker([inc.lat, inc.lng], {
+                radius: 8,
+                fillColor: typeColors[inc.incident_type] || '#607d8b',
+                color: '#fff',
+                weight: 2,
+                fillOpacity: 0.8
+            }).bindPopup(`
+                <div class="popup-title">${inc.case_no}</div>
+                <div class="popup-detail"><strong>Type:</strong> ${inc.incident_type}</div>
+                <div class="popup-detail"><strong>Barangay:</strong> ${inc.barangay}</div>
+                <div class="popup-detail"><a href="cases.php?search=${inc.case_no}" style="color: #003366;">View Details</a></div>
+            `);
+            markerClusterGroup.addLayer(marker);
+        });
+
+        map.addLayer(markerClusterGroup);
+    }
+}
 
     function updateStats(incidents) {
         document.getElementById('totalStat').textContent = incidents.length;
@@ -443,15 +471,11 @@ $stmt->execute();
     }
 
     function filterIncidents() {
-        const type = document.getElementById('typeFilter').value;
-        const status = document.getElementById('statusFilter').value;
         const dateFrom = document.getElementById('dateFrom').value;
         const dateTo = document.getElementById('dateTo').value;
 
         let filtered = allIncidents;
 
-        if (type) filtered = filtered.filter(i => i.incident_type === type);
-        if (status) filtered = filtered.filter(i => i.status === status);
         if (dateFrom) filtered = filtered.filter(i => i.incident_date >= dateFrom);
         if (dateTo) filtered = filtered.filter(i => i.incident_date <= dateTo);
 
@@ -464,12 +488,16 @@ $stmt->execute();
         isHeatmapMode = !isHeatmapMode;
         this.textContent = isHeatmapMode ? 'Heatmap Mode' : 'Marker Mode';
         this.classList.toggle('active', isHeatmapMode);
-        renderMap(allIncidents);
+        filterIncidents(); // Re-render with current filters
     });
 
-    // Filters
-    document.getElementById('typeFilter').addEventListener('change', filterIncidents);
-    document.getElementById('statusFilter').addEventListener('change', filterIncidents);
+    // Filters — type & status reload from server, date filters client-side
+    document.getElementById('typeFilter').addEventListener('change', () => {
+        loadIncidents();
+    });
+    document.getElementById('statusFilter').addEventListener('change', () => {
+        loadIncidents();
+    });
     document.getElementById('dateFrom').addEventListener('change', filterIncidents);
     document.getElementById('dateTo').addEventListener('change', filterIncidents);
 

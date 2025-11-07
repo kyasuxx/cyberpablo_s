@@ -15,14 +15,16 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-// Get filters from URL (same as cases.php)
+// Get filters from URL
 $search = trim($_GET['search'] ?? '');
 $type = $_GET['type'] ?? '';
 $barangay = $_GET['barangay'] ?? '';
 $status = $_GET['status'] ?? '';
 
-// Build query (same as cases.php but without LIMIT)
-$sql = "SELECT i.*, b.lat, b.lng, b.official_name, b.alt_name
+// Build query with prosecutor JOIN
+$sql = "SELECT i.*, 
+               b.lat, b.lng, b.official_name, b.alt_name,
+               p.full_name as prosecutor_name
         FROM incidents i 
         LEFT JOIN barangays b ON (
             i.barangay = b.official_name OR 
@@ -30,6 +32,7 @@ $sql = "SELECT i.*, b.lat, b.lng, b.official_name, b.alt_name
             i.barangay = REPLACE(b.official_name, 'Brgy. ', '') OR
             i.barangay = REPLACE(b.alt_name, 'Brgy. ', '')
         )
+        LEFT JOIN prosecutors p ON i.prosecutor_id = p.id
         WHERE 1=1";
 $params = []; 
 $types = "";
@@ -79,7 +82,7 @@ $spreadsheet->getProperties()
     ->setSubject("Incident Report")
     ->setDescription("Exported cybercrime incident cases from San Pablo City");
 
-// Set column headers - matching your database exactly
+// Set column headers - ALL fields from your database
 $headers = [
     'A1' => 'Case No',
     'B1' => 'Incident Type',
@@ -88,16 +91,25 @@ $headers = [
     'E1' => 'Date Filed',
     'F1' => 'Status',
     'G1' => 'Accused',
-    'H1' => 'Complainant',
-    'I1' => 'Modus Operandi',
-    'J1' => 'Prosecutor',
-    'K1' => 'Branch',
-    'L1' => 'NPS Docket',
-    'M1' => 'Offense/Crime',
-    'N1' => 'Date Committed',
-    'O1' => 'Bail Recommended',
-    'P1' => 'Latitude',
-    'Q1' => 'Longitude'
+    'H1' => 'Accused Address',
+    'I1' => 'Accused Contact',
+    'J1' => 'Complainant',
+    'K1' => 'Complainant Address',
+    'L1' => 'Complainant Contact',
+    'M1' => 'Modus Operandi',
+    'N1' => 'Prosecutor',
+    'O1' => 'Branch',
+    'P1' => 'NPS Docket',
+    'Q1' => 'Offense/Crime',
+    'R1' => 'Date Committed',
+    'S1' => 'Bail Recommended',
+    'T1' => 'Received By',
+    'U1' => 'Received Date',
+    'V1' => 'Returned To',
+    'W1' => 'Returned Date',
+    'X1' => 'Evidence Notes',
+    'Y1' => 'Latitude',
+    'Z1' => 'Longitude'
 ];
 
 foreach ($headers as $cell => $value) {
@@ -127,26 +139,20 @@ $headerStyle = [
     ]
 ];
 
-$sheet->getStyle('A1:Q1')->applyFromArray($headerStyle);
+$sheet->getStyle('A1:Z1')->applyFromArray($headerStyle);
 
 // Set column widths
-$sheet->getColumnDimension('A')->setWidth(18);  // Case No
-$sheet->getColumnDimension('B')->setWidth(20);  // Incident Type
-$sheet->getColumnDimension('C')->setWidth(25);  // Barangay
-$sheet->getColumnDimension('D')->setWidth(15);  // Incident Date
-$sheet->getColumnDimension('E')->setWidth(15);  // Date Filed
-$sheet->getColumnDimension('F')->setWidth(20);  // Status
-$sheet->getColumnDimension('G')->setWidth(30);  // Accused
-$sheet->getColumnDimension('H')->setWidth(30);  // Complainant
-$sheet->getColumnDimension('I')->setWidth(45);  // Modus Operandi
-$sheet->getColumnDimension('J')->setWidth(25);  // Prosecutor
-$sheet->getColumnDimension('K')->setWidth(20);  // Branch
-$sheet->getColumnDimension('L')->setWidth(20);  // NPS Docket
-$sheet->getColumnDimension('M')->setWidth(30);  // Offense/Crime
-$sheet->getColumnDimension('N')->setWidth(18);  // Date Committed
-$sheet->getColumnDimension('O')->setWidth(15);  // Bail Recommended
-$sheet->getColumnDimension('P')->setWidth(12);  // Latitude
-$sheet->getColumnDimension('Q')->setWidth(12);  // Longitude
+$columnWidths = [
+    'A' => 18,  'B' => 20,  'C' => 25,  'D' => 15,  'E' => 15,
+    'F' => 20,  'G' => 30,  'H' => 35,  'I' => 15,  'J' => 30,
+    'K' => 35,  'L' => 15,  'M' => 45,  'N' => 25,  'O' => 20,
+    'P' => 20,  'Q' => 30,  'R' => 18,  'S' => 15,  'T' => 25,
+    'U' => 18,  'V' => 25,  'W' => 18,  'X' => 40,  'Y' => 12, 'Z' => 12
+];
+
+foreach ($columnWidths as $col => $width) {
+    $sheet->getColumnDimension($col)->setWidth($width);
+}
 
 // Fill data
 $row = 2;
@@ -158,20 +164,29 @@ while ($data = $result->fetch_assoc()) {
     $sheet->setCellValue('E' . $row, $data['date_filed'] ? date('Y-m-d', strtotime($data['date_filed'])) : '');
     $sheet->setCellValue('F' . $row, $data['status']);
     $sheet->setCellValue('G' . $row, $data['accused'] ?? '');
-    $sheet->setCellValue('H' . $row, $data['complainant'] ?? '');
-    $sheet->setCellValue('I' . $row, $data['modus_operandi'] ?? '');
-    $sheet->setCellValue('J' . $row, $data['prosecutor'] ?? '');
-    $sheet->setCellValue('K' . $row, $data['branch'] ?? '');
-    $sheet->setCellValue('L' . $row, $data['nps_docket'] ?? '');
-    $sheet->setCellValue('M' . $row, $data['offense_crime'] ?? '');
-    $sheet->setCellValue('N' . $row, $data['date_committed'] ? date('Y-m-d H:i', strtotime($data['date_committed'])) : '');
-    $sheet->setCellValue('O' . $row, $data['bail_recommended'] ? number_format($data['bail_recommended'], 2) : '');
-    $sheet->setCellValue('P' . $row, $data['lat'] ?? '');
-    $sheet->setCellValue('Q' . $row, $data['lng'] ?? '');
+    $sheet->setCellValue('H' . $row, $data['accused_address'] ?? '');
+    $sheet->setCellValue('I' . $row, $data['accused_contact'] ?? '');
+    $sheet->setCellValue('J' . $row, $data['complainant'] ?? '');
+    $sheet->setCellValue('K' . $row, $data['complainant_address'] ?? '');
+    $sheet->setCellValue('L' . $row, $data['complainant_contact'] ?? '');
+    $sheet->setCellValue('M' . $row, $data['modus_operandi'] ?? '');
+    $sheet->setCellValue('N' . $row, $data['prosecutor_name'] ?? ''); // ✅ FIXED: Now uses JOIN
+    $sheet->setCellValue('O' . $row, $data['branch'] ?? '');
+    $sheet->setCellValue('P' . $row, $data['nps_docket'] ?? '');
+    $sheet->setCellValue('Q' . $row, $data['offense_crime'] ?? '');
+    $sheet->setCellValue('R' . $row, $data['date_committed'] ? date('Y-m-d H:i', strtotime($data['date_committed'])) : '');
+    $sheet->setCellValue('S' . $row, $data['bail_recommended'] ? number_format($data['bail_recommended'], 2) : '');
+    $sheet->setCellValue('T' . $row, $data['received_by'] ?? '');
+    $sheet->setCellValue('U' . $row, $data['received_date'] ? date('Y-m-d H:i', strtotime($data['received_date'])) : '');
+    $sheet->setCellValue('V' . $row, $data['returned_to'] ?? '');
+    $sheet->setCellValue('W' . $row, $data['returned_date'] ? date('Y-m-d H:i', strtotime($data['returned_date'])) : '');
+    $sheet->setCellValue('X' . $row, $data['evidence_notes'] ?? '');
+    $sheet->setCellValue('Y' . $row, $data['lat'] ?? '');
+    $sheet->setCellValue('Z' . $row, $data['lng'] ?? '');
     
     // Apply alternating row colors
     if ($row % 2 == 0) {
-        $sheet->getStyle('A' . $row . ':Q' . $row)->applyFromArray([
+        $sheet->getStyle('A' . $row . ':Z' . $row)->applyFromArray([
             'fill' => [
                 'fillType' => Fill::FILL_SOLID,
                 'startColor' => ['rgb' => 'F8F9FA']
@@ -179,8 +194,8 @@ while ($data = $result->fetch_assoc()) {
         ]);
     }
     
-    // Apply borders to data rows
-    $sheet->getStyle('A' . $row . ':Q' . $row)->applyFromArray([
+    // Apply borders
+    $sheet->getStyle('A' . $row . ':Z' . $row)->applyFromArray([
         'borders' => [
             'allBorders' => [
                 'borderStyle' => Border::BORDER_THIN,
@@ -190,28 +205,30 @@ while ($data = $result->fetch_assoc()) {
     ]);
     
     // Color code status
-    $statusCell = 'F' . $row;
     switch ($data['status']) {
         case 'Open':
-            $sheet->getStyle($statusCell)->applyFromArray([
+            $sheet->getStyle('F' . $row)->applyFromArray([
                 'font' => ['color' => ['rgb' => 'D32F2F'], 'bold' => true]
             ]);
             break;
         case 'Under Investigation':
-            $sheet->getStyle($statusCell)->applyFromArray([
+            $sheet->getStyle('F' . $row)->applyFromArray([
                 'font' => ['color' => ['rgb' => 'F9A825'], 'bold' => true]
             ]);
             break;
         case 'Closed':
-            $sheet->getStyle($statusCell)->applyFromArray([
+            $sheet->getStyle('F' . $row)->applyFromArray([
                 'font' => ['color' => ['rgb' => '388E3C'], 'bold' => true]
             ]);
             break;
     }
     
-    // Wrap text for Modus Operandi and Offense/Crime
-    $sheet->getStyle('I' . $row)->getAlignment()->setWrapText(true);
-    $sheet->getStyle('M' . $row)->getAlignment()->setWrapText(true);
+    // Wrap text for long fields
+    $sheet->getStyle('H' . $row)->getAlignment()->setWrapText(true); // Accused Address
+    $sheet->getStyle('K' . $row)->getAlignment()->setWrapText(true); // Complainant Address
+    $sheet->getStyle('M' . $row)->getAlignment()->setWrapText(true); // Modus Operandi
+    $sheet->getStyle('Q' . $row)->getAlignment()->setWrapText(true); // Offense/Crime
+    $sheet->getStyle('X' . $row)->getAlignment()->setWrapText(true); // Evidence Notes
     
     $row++;
 }
@@ -224,16 +241,17 @@ for ($i = 2; $i < $row; $i++) {
 // Freeze header row
 $sheet->freezePane('A2');
 
-// Add summary at the bottom
+// Add summary statistics
 $summaryRow = $row + 2;
 $sheet->setCellValue('A' . $summaryRow, 'SUMMARY STATISTICS');
 $sheet->mergeCells('A' . $summaryRow . ':C' . $summaryRow);
 $sheet->getStyle('A' . $summaryRow)->applyFromArray([
-    'font' => ['bold' => true, 'size' => 12],
+    'font' => ['bold' => true, 'size' => 12, 'color' => ['rgb' => 'FFFFFF']],
     'fill' => [
         'fillType' => Fill::FILL_SOLID,
-        'startColor' => ['rgb' => 'E0E0E0']
-    ]
+        'startColor' => ['rgb' => '003366']
+    ],
+    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]
 ]);
 
 // Count statistics
@@ -253,17 +271,22 @@ while ($data = $result->fetch_assoc()) {
     }
 }
 
-$sheet->setCellValue('A' . ($summaryRow + 1), 'Total Cases:');
-$sheet->setCellValue('B' . ($summaryRow + 1), $totalCases);
-$sheet->setCellValue('A' . ($summaryRow + 2), 'Open Cases:');
-$sheet->setCellValue('B' . ($summaryRow + 2), $openCases);
-$sheet->setCellValue('A' . ($summaryRow + 3), 'Under Investigation:');
-$sheet->setCellValue('B' . ($summaryRow + 3), $underInvestigation);
-$sheet->setCellValue('A' . ($summaryRow + 4), 'Closed Cases:');
-$sheet->setCellValue('B' . ($summaryRow + 4), $closedCases);
+$summaryData = [
+    ['Total Cases:', $totalCases],
+    ['Open Cases:', $openCases],
+    ['Under Investigation:', $underInvestigation],
+    ['Closed Cases:', $closedCases]
+];
+
+$summaryStartRow = $summaryRow + 1;
+foreach ($summaryData as $idx => $data) {
+    $currentRow = $summaryStartRow + $idx;
+    $sheet->setCellValue('A' . $currentRow, $data[0]);
+    $sheet->setCellValue('B' . $currentRow, $data[1]);
+}
 
 // Style summary
-$sheet->getStyle('A' . ($summaryRow + 1) . ':B' . ($summaryRow + 4))->applyFromArray([
+$sheet->getStyle('A' . $summaryStartRow . ':B' . ($summaryStartRow + 3))->applyFromArray([
     'font' => ['bold' => true],
     'borders' => [
         'allBorders' => [
@@ -277,26 +300,27 @@ $audit = $conn->prepare("INSERT INTO audit_log (user_id, action, ip_address) VAL
 $audit->bind_param("is", $_SESSION['user_id'], $_SERVER['REMOTE_ADDR']);
 $audit->execute();
 
-// Generate filename with timestamp
-$filename = 'CyberPablo_Cases_' . date('Y-m-d_His') . '.xlsx';
+// Generate filename with timestamp and filters
+$filterSuffix = '';
+if ($search) $filterSuffix .= '_Search';
+if ($type) $filterSuffix .= '_' . str_replace(' ', '', $type);
+if ($status) $filterSuffix .= '_' . str_replace(' ', '', $status);
+
+$filename = 'CyberPablo_Cases' . $filterSuffix . '_' . date('Y-m-d_His') . '.xlsx';
 
 // Set headers for download
 header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 header('Content-Disposition: attachment;filename="' . $filename . '"');
 header('Cache-Control: max-age=0');
-header('Cache-Control: max-age=1');
 header('Expires: Mon, 26 Jul 1997 05:00:00 GMT');
 header('Last-Modified: ' . gmdate('D, d M Y H:i:s') . ' GMT');
-header('Cache-Control: cache, must-revalidate');
 header('Pragma: public');
 
-// Write file to output
+// Write file
 $writer = new Xlsx($spreadsheet);
 $writer->save('php://output');
 
 // Clean up
 $spreadsheet->disconnectWorksheets();
 unset($spreadsheet);
-
-exit;
 ?>

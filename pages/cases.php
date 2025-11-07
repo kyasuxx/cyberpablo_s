@@ -12,6 +12,13 @@ $page = max(1, (int)($_GET['page'] ?? 1));
 $limit = 25;
 $offset = ($page - 1) * $limit;
 
+// At top, after $conn
+$prosecutors = [];
+$presult = $conn->query("SELECT id, full_name FROM prosecutors");
+while ($p = $presult->fetch_assoc()) {
+    $prosecutors[$p['id']] = $p['full_name'];
+}
+
 // JOIN with official_name OR alt_name
 $sql = "SELECT i.*, b.lat, b.lng, b.official_name, b.alt_name
         FROM incidents i 
@@ -171,13 +178,7 @@ $barangay_result = $conn->query("SELECT official_name, alt_name FROM barangays O
     $barangay_result->data_seek(0); // Reset pointer
     while ($row = $result->fetch_assoc()): 
         // Fetch prosecutor name
-        $prosecutor_name = '—';
-        if ($row['prosecutor_id']) {
-            $pstmt = $conn->prepare("SELECT full_name FROM prosecutors WHERE id = ?");
-            $pstmt->bind_param("i", $row['prosecutor_id']);
-            $pstmt->execute();
-            $prosecutor_name = $pstmt->get_result()->fetch_row()[0] ?? '—';
-        }
+        $prosecutor_name = $row['prosecutor_id'] ? ($prosecutors[$row['prosecutor_id']] ?? '—') : '—';
 
         // Fetch history
         $hist_stmt = $conn->prepare("
