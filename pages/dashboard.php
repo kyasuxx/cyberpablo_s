@@ -2,6 +2,12 @@
 session_start();
 require_once 'config/connection.php';
 
+$barangay_list = [];
+$barangay_result = $conn->query("SELECT id, official_name FROM barangays ORDER BY official_name");
+while ($b = $barangay_result->fetch_assoc()) {
+    $barangay_list[] = $b;
+}
+
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit;
@@ -10,6 +16,8 @@ if (!isset($_SESSION['user_id'])) {
 $user_id = $_SESSION['user_id'];
 $username = $_SESSION['username'];
 $role = $_SESSION['role'];
+
+
 
 // Log audit
 $ip = $_SERVER['REMOTE_ADDR'];
@@ -27,6 +35,8 @@ $stmt->execute();
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; }
@@ -259,6 +269,7 @@ $stmt->execute();
                 <a href="cases.php">Cases</a>
                 <?php if ($role === 'admin'): ?>
                     <a href="import_cases.php">Import</a>
+                    <a href="add_cases.php">Add New Case</a>
                 <?php endif; ?>
             </div>
             <div>
@@ -307,6 +318,17 @@ $stmt->execute();
                     <label>Date Range:</label>
                     <input type="date" id="dateFrom">
                     <input type="date" id="dateTo" style="margin-top: 5px;">
+                </div>
+                <div class="control-group">
+                    <label>Barangay:</label>
+                    <select id="barangayFilter">
+                        <option value="">All Barangays</option>
+                        <?php foreach ($barangay_list as $barangay): ?>
+                            <option value="<?= $barangay['id'] ?>">
+                                <?= htmlspecialchars($barangay['official_name']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
             </div>
             
@@ -363,6 +385,8 @@ $stmt->execute();
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
+    new Choices('#barangayFilter', { searchEnabled: true });
+
     let allIncidents = [];
     let heatmapLayer = null;
     let markerClusterGroup = null;
@@ -384,9 +408,15 @@ $stmt->execute();
         
         const type = document.getElementById('typeFilter').value;
         const status = document.getElementById('statusFilter').value;
+        const barangay = document.getElementById('barangayFilter').value; // <-- ADD THIS
+        const dateFrom = document.getElementById('dateFrom').value;
+        const dateTo = document.getElementById('dateTo').value;
 
         if (type) url.searchParams.set('type', type);
         if (status) url.searchParams.set('status', status);
+        if (barangay) url.searchParams.set('barangay', barangay); // <-- ADD THIS
+        if (dateFrom) url.searchParams.set('date_from', dateFrom);
+        if (dateTo) url.searchParams.set('date_to', dateTo);
 
         fetch(url)
             .then(res => {
@@ -394,8 +424,9 @@ $stmt->execute();
                 return res.json();
             })
             .then(data => {
-                allIncidents = data;
-                filterIncidents(); // Apply date filters
+                allIncidents = data; // This is now a filtered list from the server
+                renderMap(allIncidents);
+                updateStats(allIncidents);
             })
             .catch(err => {
                 console.error('API Error:', err);
@@ -471,16 +502,7 @@ $stmt->execute();
     }
 
     function filterIncidents() {
-        const dateFrom = document.getElementById('dateFrom').value;
-        const dateTo = document.getElementById('dateTo').value;
-
-        let filtered = allIncidents;
-
-        if (dateFrom) filtered = filtered.filter(i => i.incident_date >= dateFrom);
-        if (dateTo) filtered = filtered.filter(i => i.incident_date <= dateTo);
-
-        renderMap(filtered);
-        updateStats(filtered);
+        loadIncidents();
     }
 
     // Heatmap toggle
@@ -491,15 +513,18 @@ $stmt->execute();
         filterIncidents(); // Re-render with current filters
     });
 
-    // Filters — type & status reload from server, date filters client-side
-    document.getElementById('typeFilter').addEventListener('change', () => {
-        loadIncidents();
-    });
-    document.getElementById('statusFilter').addEventListener('change', () => {
-        loadIncidents();
-    });
-    document.getElementById('dateFrom').addEventListener('change', filterIncidents);
-    document.getElementById('dateTo').addEventListener('change', filterIncidents);
+        // Filters — type & status reload from server, date filters client-side
+        document.getElementById('typeFilter').addEventListener('change', () => {
+            loadIncidents();
+        });
+        document.getElementById('statusFilter').addEventListener('change', () => {
+            loadIncidents();
+        });
+        document.getElementById('barangayFilter').addEventListener('change', () => { // <-- ADD THIS
+            loadIncidents();
+        });
+        document.getElementById('dateFrom').addEventListener('change', filterIncidents);
+        document.getElementById('dateTo').addEventListener('change', filterIncidents);
 
     // Check for URL parameters (when coming from cases.php)
     const urlParams = new URLSearchParams(window.location.search);

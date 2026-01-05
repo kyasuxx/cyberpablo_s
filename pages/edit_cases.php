@@ -24,7 +24,7 @@ $stmt = $conn->prepare("
     SELECT i.*, b.official_name, b.alt_name, b.lat as brgy_lat, b.lng as brgy_lng,
            p.full_name as prosecutor_name
     FROM incidents i
-    LEFT JOIN barangays b ON (i.barangay = b.official_name OR i.barangay = b.alt_name)
+    LEFT JOIN barangays b ON i.barangay_id = b.id
     LEFT JOIN prosecutors p ON i.prosecutor_id = p.id
     WHERE i.case_no = ?
 ");
@@ -81,6 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_case'])) {
             UPDATE incidents SET
                 incident_type = ?,
                 barangay = ?,
+                barangay_id = ?,
                 lat = ?,
                 lng = ?,
                 incident_date = ?,
@@ -138,9 +139,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_case'])) {
         
         // Count check: we have 25 parameters in UPDATE + WHERE
         $update_stmt->bind_param(
-            "ssddsssssssssssssdissssss",  // 25 characters: see breakdown below
+            "ssiddsssssssssssssdissssss",  // 26 characters
             $_POST['incident_type'],       // 1: s
             $_POST['barangay'],             // 2: s
+            $_POST['barangay_id'],
             $_POST['lat'],                  // 3: d
             $_POST['lng'],                  // 4: d
             $_POST['incident_date'],        // 5: s
@@ -557,6 +559,7 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
                             <input type="text" name="barangay" id="barangay" 
                                    value="<?= htmlspecialchars($case['official_name'] ?? $case['barangay']) ?>" 
                                    autocomplete="off" required>
+
                             <div id="barangay-suggestions"></div>
                         </div>
                         <div class="form-group">
@@ -909,6 +912,7 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
             
             suggestions.innerHTML = filtered.map(b => `
                 <div class="suggestion-item" 
+                     data-id="${b.id}"
                      data-official="${b.official}" 
                      data-lat="${b.lat}" 
                      data-lng="${b.lng}">
@@ -925,10 +929,11 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
                     const official = this.dataset.official;
                     const lat = parseFloat(this.dataset.lat);
                     const lng = parseFloat(this.dataset.lng);
-                    
+                    const id = this.dataset.id;
                     barangayInput.value = official;
                     document.getElementById('lat').value = lat.toFixed(6);
                     document.getElementById('lng').value = lng.toFixed(6);
+                    document.getElementById('barangay_id').value = id;
                     
                     // Update map
                     marker.setLatLng([lat, lng]);

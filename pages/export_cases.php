@@ -9,6 +9,17 @@ use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 
+function safeFormatDate($dateString, $format = 'Y-m-d') {
+    if (empty($dateString) || str_contains($dateString, '0000-00-00')) {
+        return ''; // Return blank for NULL or zero dates
+    }
+    $timestamp = strtotime($dateString);
+    if ($timestamp === false || $timestamp < 0) {
+        return ''; // Return blank for other invalid dates
+    }
+    return date($format, $timestamp);
+}
+
 // Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
@@ -20,18 +31,17 @@ $search = trim($_GET['search'] ?? '');
 $type = $_GET['type'] ?? '';
 $barangay = $_GET['barangay'] ?? '';
 $status = $_GET['status'] ?? '';
+$date_from = $_GET['date_from'] ?? '';
+$date_to = $_GET['date_to'] ?? '';
+$month = $_GET['month'] ?? '';
+$year = $_GET['year'] ?? '';
 
 // Build query with prosecutor JOIN
 $sql = "SELECT i.*, 
                b.lat, b.lng, b.official_name, b.alt_name,
                p.full_name as prosecutor_name
         FROM incidents i 
-        LEFT JOIN barangays b ON (
-            i.barangay = b.official_name OR 
-            i.barangay = b.alt_name OR
-            i.barangay = REPLACE(b.official_name, 'Brgy. ', '') OR
-            i.barangay = REPLACE(b.alt_name, 'Brgy. ', '')
-        )
+        LEFT JOIN barangays b ON i.barangay_id = b.id
         LEFT JOIN prosecutors p ON i.prosecutor_id = p.id
         WHERE 1=1";
 $params = []; 
@@ -49,16 +59,47 @@ if ($type) {
     $params[] = $type; 
     $types .= "s"; 
 }
-if ($barangay) { 
-    $sql .= " AND (b.official_name = ? OR b.alt_name = ?)"; 
-    $params[] = $barangay; 
-    $params[] = $barangay; 
-    $types .= "ss"; 
+if ($barangay){
+    $sql .= " AND b.id = ?";
+    $params[] = $barangay;
+    $types .= "i";
 }
 if ($status) { 
     $sql .= " AND i.status = ?"; 
     $params[] = $status; 
     $types .= "s"; 
+}
+
+// NEW: Date range filter
+if ($date_from && $date_to) {
+    $sql .= " AND i.incident_date BETWEEN ? AND ?";
+    $params[] = $date_from;
+    $params[] = $date_to;
+    $types .= "ss";
+} elseif ($date_from) {
+    $sql .= " AND i.incident_date >= ?";
+    $params[] = $date_from;
+    $types .= "s";
+} elseif ($date_to) {
+    $sql .= " AND i.incident_date <= ?";
+    $params[] = $date_to;
+    $types .= "s";
+}
+
+// NEW: Month/Year filter
+if ($month && $year) {
+    $sql .= " AND MONTH(i.incident_date) = ? AND YEAR(i.incident_date) = ?";
+    $params[] = $month;
+    $params[] = $year;
+    $types .= "ii";
+} elseif ($month) {
+    $sql .= " AND MONTH(i.incident_date) = ?";
+    $params[] = $month;
+    $types .= "i";
+} elseif ($year) {
+    $sql .= " AND YEAR(i.incident_date) = ?";
+    $params[] = $year;
+    $types .= "i";
 }
 
 $sql .= " ORDER BY i.incident_date DESC";
@@ -109,7 +150,8 @@ $headers = [
     'W1' => 'Returned Date',
     'X1' => 'Evidence Notes',
     'Y1' => 'Latitude',
-    'Z1' => 'Longitude'
+    'Z1' => 'Longitude',
+    'AA1' => 'Attachments'
 ];
 
 foreach ($headers as $cell => $value) {
@@ -139,7 +181,7 @@ $headerStyle = [
     ]
 ];
 
-$sheet->getStyle('A1:Z1')->applyFromArray($headerStyle);
+$sheet->getStyle('A1:AA1')->applyFromArray($headerStyle);
 
 // Set column widths
 $columnWidths = [
@@ -147,21 +189,27 @@ $columnWidths = [
     'F' => 20,  'G' => 30,  'H' => 35,  'I' => 15,  'J' => 30,
     'K' => 35,  'L' => 15,  'M' => 45,  'N' => 25,  'O' => 20,
     'P' => 20,  'Q' => 30,  'R' => 18,  'S' => 15,  'T' => 25,
-    'U' => 18,  'V' => 25,  'W' => 18,  'X' => 40,  'Y' => 12, 'Z' => 12
+    'U' => 18,  'V' => 25,  'W' => 18,  'X' => 40,  'Y' => 12, 'Z' => 12,
+    'AA' => 45
 ];
 
 foreach ($columnWidths as $col => $width) {
     $sheet->getColumnDimension($col)->setWidth($width);
 }
 
+
 // Fill data
 $row = 2;
+$openCases = 0;
+$underInvestigation = 0;
+$closedCases = 0;
+$att_stmt = $conn->prepare("SELECT file_name FROM attachments WHERE incident_id = ?");
 while ($data = $result->fetch_assoc()) {
     $sheet->setCellValue('A' . $row, $data['case_no']);
     $sheet->setCellValue('B' . $row, $data['incident_type']);
     $sheet->setCellValue('C' . $row, $data['official_name'] ?? $data['barangay']);
-    $sheet->setCellValue('D' . $row, $data['incident_date'] ? date('Y-m-d', strtotime($data['incident_date'])) : '');
-    $sheet->setCellValue('E' . $row, $data['date_filed'] ? date('Y-m-d', strtotime($data['date_filed'])) : '');
+    $sheet->setCellValue('D' . $row, safeFormatDate($data['incident_date'], 'Y-m-d'));
+    $sheet->setCellValue('E' . $row, safeFormatDate($data['date_filed'], 'Y-m-d'));
     $sheet->setCellValue('F' . $row, $data['status']);
     $sheet->setCellValue('G' . $row, $data['accused'] ?? '');
     $sheet->setCellValue('H' . $row, $data['accused_address'] ?? '');
@@ -174,15 +222,28 @@ while ($data = $result->fetch_assoc()) {
     $sheet->setCellValue('O' . $row, $data['branch'] ?? '');
     $sheet->setCellValue('P' . $row, $data['nps_docket'] ?? '');
     $sheet->setCellValue('Q' . $row, $data['offense_crime'] ?? '');
-    $sheet->setCellValue('R' . $row, $data['date_committed'] ? date('Y-m-d H:i', strtotime($data['date_committed'])) : '');
+    $sheet->setCellValue('R' . $row, safeFormatDate($data['date_committed'], 'Y-m-d H:i'));
     $sheet->setCellValue('S' . $row, $data['bail_recommended'] ? number_format($data['bail_recommended'], 2) : '');
     $sheet->setCellValue('T' . $row, $data['received_by'] ?? '');
-    $sheet->setCellValue('U' . $row, $data['received_date'] ? date('Y-m-d H:i', strtotime($data['received_date'])) : '');
+    $sheet->setCellValue('U' . $row, safeFormatDate($data['received_date'], 'Y-m-d H:i'));
     $sheet->setCellValue('V' . $row, $data['returned_to'] ?? '');
-    $sheet->setCellValue('W' . $row, $data['returned_date'] ? date('Y-m-d H:i', strtotime($data['returned_date'])) : '');
+    $sheet->setCellValue('W' . $row, safeFormatDate($data['returned_date'], 'Y-m-d H:i'));
     $sheet->setCellValue('X' . $row, $data['evidence_notes'] ?? '');
     $sheet->setCellValue('Y' . $row, $data['lat'] ?? '');
     $sheet->setCellValue('Z' . $row, $data['lng'] ?? '');
+
+   
+    $att_stmt->bind_param("i", $data['id']);
+    $att_stmt->execute();
+    $att_result = $att_stmt->get_result();
+    
+    $filenames = [];
+    while ($att_row = $att_result->fetch_assoc()) {
+        $filenames[] = $att_row['file_name'];
+    }
+    // Set cell value, comma-separated
+    $sheet->setCellValue('AA' . $row, implode(', ', $filenames));
+   
     
     // Apply alternating row colors
     if ($row % 2 == 0) {
@@ -203,6 +264,7 @@ while ($data = $result->fetch_assoc()) {
             ]
         ]
     ]);
+
     
     // Color code status
     switch ($data['status']) {
@@ -222,6 +284,12 @@ while ($data = $result->fetch_assoc()) {
             ]);
             break;
     }
+
+    switch ($data['status']) {
+        case 'Open': $openCases++; break;
+        case 'Under Investigation': $underInvestigation++; break;
+        case 'Closed': $closedCases++; break;
+    }
     
     // Wrap text for long fields
     $sheet->getStyle('H' . $row)->getAlignment()->setWrapText(true); // Accused Address
@@ -229,7 +297,7 @@ while ($data = $result->fetch_assoc()) {
     $sheet->getStyle('M' . $row)->getAlignment()->setWrapText(true); // Modus Operandi
     $sheet->getStyle('Q' . $row)->getAlignment()->setWrapText(true); // Offense/Crime
     $sheet->getStyle('X' . $row)->getAlignment()->setWrapText(true); // Evidence Notes
-    
+    $sheet->getStyle('AA' . $row)->getAlignment()->setWrapText(true); // Attachments
     $row++;
 }
 
@@ -260,16 +328,16 @@ $openCases = 0;
 $underInvestigation = 0;
 $closedCases = 0;
 
-// Re-query for statistics
-$stmt->execute();
-$result = $stmt->get_result();
-while ($data = $result->fetch_assoc()) {
-    switch ($data['status']) {
-        case 'Open': $openCases++; break;
-        case 'Under Investigation': $underInvestigation++; break;
-        case 'Closed': $closedCases++; break;
-    }
-}
+// // Re-query for statistics
+// $stmt->execute();
+// $result = $stmt->get_result();
+// while ($data = $result->fetch_assoc()) {
+//     switch ($data['status']) {
+//         case 'Open': $openCases++; break;
+//         case 'Under Investigation': $underInvestigation++; break;
+//         case 'Closed': $closedCases++; break;
+//     }
+// }
 
 $summaryData = [
     ['Total Cases:', $totalCases],
@@ -305,6 +373,9 @@ $filterSuffix = '';
 if ($search) $filterSuffix .= '_Search';
 if ($type) $filterSuffix .= '_' . str_replace(' ', '', $type);
 if ($status) $filterSuffix .= '_' . str_replace(' ', '', $status);
+if ($date_from || $date_to) $filterSuffix .= '_Date';
+if ($month) $filterSuffix .= '_Month';
+if ($year) $filterSuffix .= '_Year';
 
 $filename = 'CyberPablo_Cases' . $filterSuffix . '_' . date('Y-m-d_His') . '.xlsx';
 

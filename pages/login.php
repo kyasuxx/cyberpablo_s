@@ -12,10 +12,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $password = $_POST['password'];
 
     // Debug: Check if user exists
-    $check = $conn->query("SELECT COUNT(*) FROM users WHERE username = '$username'");
-    if ($check->fetch_row()[0] == 0) {
-        $error = "User not found!";
-    } else {
+    
+    // if ($check->fetch_row()[0] == 0) {
+    //     $error = "User not found!";
+    // } else {
         $stmt = $conn->prepare("SELECT id, username, password_hash, role FROM users WHERE username = ?");
         if (!$stmt) {
             $error = "Prepare failed: " . $conn->error;
@@ -30,7 +30,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $_SESSION['username'] = $user['username'];
                 $_SESSION['role'] = $user['role'];
 
-                $conn->query("UPDATE users SET last_login = NOW() WHERE id = " . $user['id']);
+               // Securely update the last_login timestamp
+                $update_stmt = $conn->prepare("UPDATE users SET last_login = NOW() WHERE id = ?");
+                $update_stmt->bind_param("i", $user['id']);
+                $update_stmt->execute();
+
                 header("Location: dashboard.php");
                 exit;
             } else {
@@ -38,7 +42,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
         }
     }
-}
 ?>
 
 <!DOCTYPE html>
@@ -48,11 +51,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="../assets/scss/main.css">
     <title>CyberPablo Login</title>
-    <style>
-    
-        
-        
-    </style>
 </head>
 <body>
     <main class="login">
@@ -69,9 +67,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 <input type="password" name="password" placeholder="Password" required>
                 <button type="submit">Login</button>
             </form>
-
-            <p><small>Test: <b>admin</b> / <b>ChangeMe123!</b></small></p>
         </div>
+
+        
     </main>
 </body>
 </html>

@@ -44,9 +44,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
                 'modus_operandi' => ['modus operandi', 'method'],
                 'status' => ['status'],
                 'accused' => ['accused', 'suspect'],
+                'accused_address' => ['accused address', 'suspect address'],
+                'accused_contact' => ['accused contact', 'suspect contact'],
                 'complainant' => ['complainant', 'victim'],
+                'complainant_address' => ['complainant address', 'victim address'],
+                'complainant_contact' => ['complainant contact', 'victim contact'],
+                'nps_docket' => ['nps docket', 'docket number', 'nps docket number'],
+                'offense_crime' => ['offense crime', 'offense', 'crime', 'offense/crime', 'crime type'],
+                'date_committed' => ['date committed', 'crime date'],
                 'date_filed' => ['date filed', 'filed date'],
-                'prosecutor' => ['prosecutor', 'assigned prosecutor']
+                'bail_recommended' => ['bail recommended', 'bail', 'bail amount'],
+                'prosecutor' => ['prosecutor', 'assigned prosecutor'],
+                'received_by' => ['received by'],
+                'received_date' => ['received date'],
+                'returned_to' => ['returned to'],
+                'returned_date' => ['returned date'],
+                'evidence_notes' => ['evidence notes', 'notes', 'evidence'],
+                'attachments' => ['attachments', 'files', 'filenames', 'attachment filenames'] // <-- FIX 1: UNCOMMENTED
             ];
 
             // Normalize headers
@@ -54,7 +68,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
             $headers_normalized = [];
             foreach ($headers_raw as $header) {
                 $normalized = strtolower($header);
-                $normalized = str_replace(['_', '-', '.'], ' ', $normalized);
+                $normalized = str_replace(['_', '-', '.', '/', '\\'], ' ', $normalized); // Added / and \
+                $normalized = preg_replace('/\s+/', ' ', $normalized); // Normalize multiple spaces to one
+                $normalized = trim($normalized);
 
                 $matched_key = null;
                 foreach ($header_aliases as $expected => $aliases) {
@@ -66,11 +82,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
                 $headers_normalized[] = $matched_key ?? str_replace(' ', '_', $normalized);
             }
 
-            // ✅ FIX: define $headers so array_combine() won’t fail
             $headers = $headers_normalized;
 
             // Validate all required headers exist
-            $missing_headers = array_diff(array_keys($header_aliases), $headers_normalized);
+            $required_keys = ['case_no', 'incident_type', 'barangay', 'incident_date', 'status'];
+            $missing_headers = [];
+            foreach ($required_keys as $r_key) {
+                if (!in_array($r_key, $headers)) {
+                    $missing_headers[] = $r_key;
+                }
+            }
+            
             if (!empty($missing_headers)) {
                 $upload_status = 'error';
                 $upload_message = 'Missing required columns: ' . implode(', ', $missing_headers);
@@ -78,6 +100,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
                 // Preview first 10 rows
                 $preview_count = min(10, count($rows) - 1);
                 for ($i = 1; $i <= $preview_count; $i++) {
+                    // Prevent row mismatch
+                    if (count($headers) != count($rows[$i])) {
+                        $errors[] = "Row " . ($i + 1) . ": Column count mismatch. Expected " . count($headers) . " but got " . count($rows[$i]) . ". Skipping row.";
+                        continue;
+                    }
                     $row_data = @array_combine($headers, $rows[$i]);
                     if (!$row_data) continue;
 
@@ -86,7 +113,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
                     $clean = preg_replace('/^Brgy\.?\s*/i', '', $barangay_input);
 
                     $brgy_check = $conn->prepare("
-                        SELECT official_name, lat, lng FROM barangays 
+                        SELECT id, official_name, lat, lng FROM barangays 
                         WHERE official_name = ? OR alt_name = ? 
                         OR official_name = ? OR alt_name = ? 
                         LIMIT 1
@@ -105,13 +132,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
                     $dup_check->execute();
 
                     if ($dup_check->get_result()->num_rows > 0) {
-                        // Just mark as existing, not an error
                         $row_data['existing_case'] = true;
                     } else {
                         $row_data['existing_case'] = false;
                     }
 
-
+                    // FIX 2: Add "Not Listed" for preview
+                    $row_data['incident_type'] = trim($row_data['incident_type'] ?? '');
+                    if ($row_data['incident_type'] === '') {
+                        $row_data['incident_type'] = 'Not Listed';
+                    }
                     $preview_data[] = $row_data;
                 }
 
@@ -123,10 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
                     $upload_message = 'Some rows have warnings (e.g., missing barangays). Duplicates will be updated automatically.';
                 }
 
-                // Store file for import (even if warnings exist)
-                $_SESSION['pending_import_file'] = $file['tmp_name'];
                 $_SESSION['pending_import_rows'] = $rows;
-
             }
         } catch (Exception $e) {
             $upload_status = 'error';
@@ -146,16 +173,32 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
         'modus_operandi' => ['modus operandi', 'method'],
         'status' => ['status'],
         'accused' => ['accused', 'suspect'],
+        'accused_address' => ['accused address', 'suspect address'],
+        'accused_contact' => ['accused contact', 'suspect contact'],
         'complainant' => ['complainant', 'victim'],
+        'complainant_address' => ['complainant address', 'victim address'],
+        'complainant_contact' => ['complainant contact', 'victim contact'],
+        'nps_docket' => ['nps docket', 'docket number', 'nps docket number'],
+        'offense_crime' => ['offense crime', 'offense', 'crime', 'offense/crime', 'crime type'],
+        'date_committed' => ['date committed', 'crime date'],
         'date_filed' => ['date filed', 'filed date'],
-        'prosecutor' => ['prosecutor', 'assigned prosecutor']
+        'bail_recommended' => ['bail recommended', 'bail', 'bail amount'],
+        'prosecutor' => ['prosecutor', 'assigned prosecutor'],
+        'received_by' => ['received by'],
+        'received_date' => ['received date'],
+        'returned_to' => ['returned to'],
+        'returned_date' => ['returned date'],
+        'evidence_notes' => ['evidence notes', 'notes', 'evidence'],
+        'attachments' => ['attachments', 'files', 'filenames', 'attachment filenames'] // <-- FIX 1: UNCOMMENTED
     ];
 
     $headers_raw = array_map('trim', $rows[0]);
     $headers = [];
     foreach ($headers_raw as $header) {
         $normalized = strtolower($header);
-        $normalized = str_replace(['_', '-', '.'], ' ', $normalized);
+        $normalized = str_replace(['_', '-', '.', '/', '\\'], ' ', $normalized);
+        $normalized = preg_replace('/\s+/', ' ', $normalized);
+        $normalized = trim($normalized);
 
         $matched_key = null;
         foreach ($header_aliases as $expected => $aliases) {
@@ -174,15 +217,31 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
     $conn->begin_transaction();
 
     try {
+        // Helper function to clean dates during import
+            function safeImportDate($dateString, $format = 'Y-m-d') {
+                if (empty($dateString) || str_contains($dateString, '0000-00-00') || str_contains($dateString, '0001')) {
+                    return null; // Set to NULL if it's empty, a zero date, or the bad -0001 date
+                }
+                $timestamp = strtotime($dateString);
+                if ($timestamp === false || $timestamp <= 0) {
+                    return null; // Set to NULL if it's an invalid date (like "N/A" or "test")
+                }
+                return date($format, $timestamp);
+            }
         for ($i = 1; $i < count($rows); $i++) {
-            $row_data = array_combine($headers, $rows[$i]);
+            // Prevent row mismatch
+            if (count($headers) != count($rows[$i])) {
+                continue; // Skip mismatched row
+            }
+            $row_data = @array_combine($headers, $rows[$i]);
+            if (!$row_data) continue;
 
-            // Get barangay coordinates
+            // Get barangay ID
             $barangay_input = trim($row_data['barangay']);
             $clean = preg_replace('/^Brgy\.?\s*/i', '', $barangay_input);
 
             $brgy_stmt = $conn->prepare("
-                SELECT official_name, lat, lng FROM barangays 
+                SELECT id, official_name, lat, lng FROM barangays 
                 WHERE official_name = ? OR alt_name = ? 
                 OR official_name = ? OR alt_name = ? 
                 LIMIT 1
@@ -204,7 +263,7 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
                 $pcheck->execute();
                 $pid = $pcheck->get_result()->fetch_row()[0] ?? null;
 
-                if (!$pid) {
+                if (!$pid && !empty($p)) { // Only insert if not empty
                     $insert_p = $conn->prepare("INSERT INTO prosecutors (full_name) VALUES (?)");
                     $insert_p->bind_param("s", $p);
                     $insert_p->execute();
@@ -214,46 +273,217 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
                 }
             }
 
-            $victim_hash = hash('sha256', $row_data['complainant'] . time());
+            $victim_hash = hash('sha256', ($row_data['complainant'] ?? '') . time());
 
             $insert = $conn->prepare("
                 INSERT INTO incidents (
-                    case_no, incident_type, barangay, lat, lng, incident_date,
-                    modus_operandi, hashed_victim_id, status, accused, complainant,
-                    date_filed, prosecutor_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    case_no, incident_type, barangay, barangay_id, lat, lng, incident_date,
+                    modus_operandi, hashed_victim_id, status, 
+                    accused, accused_address, accused_contact,
+                    complainant, complainant_address, complainant_contact,
+                    nps_docket, offense_crime, date_committed, date_filed, 
+                    bail_recommended, prosecutor_id, 
+                    received_by, received_date, returned_to, returned_date,
+                    evidence_notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE 
                     incident_type = VALUES(incident_type),
                     barangay = VALUES(barangay),
-                    lat = VALUES(lat), lng = VALUES(lng),
+                    barangay_id = VALUES(barangay_id),
+                    lat = VALUES(lat), 
+                    lng = VALUES(lng),
                     incident_date = VALUES(incident_date),
                     modus_operandi = VALUES(modus_operandi),
                     status = VALUES(status),
                     accused = VALUES(accused),
+                    accused_address = VALUES(accused_address),
+                    accused_contact = VALUES(accused_contact),
                     complainant = VALUES(complainant),
+                    complainant_address = VALUES(complainant_address),
+                    complainant_contact = VALUES(complainant_contact),
+                    nps_docket = VALUES(nps_docket),
+                    offense_crime = VALUES(offense_crime),
+                    date_committed = VALUES(date_committed),
                     date_filed = VALUES(date_filed),
+                    bail_recommended = VALUES(bail_recommended),
                     prosecutor_id = VALUES(prosecutor_id),
+                    received_by = VALUES(received_by),
+                    received_date = VALUES(received_date),
+                    returned_to = VALUES(returned_to),
+                    returned_date = VALUES(returned_date),
+                    evidence_notes = VALUES(evidence_notes),
                     updated_at = NOW()
             ");
+
+            // Handle nullable date fields
+// Handle nullable date fields
+
+            
+
+            $incident_date = safeImportDate($row_data['incident_date'] ?? '', 'Y-m-d');
+            if ($incident_date === null) {
+                // If the date is invalid or blank, default to today's date to satisfy NOT NULL
+                $incident_date = date('Y-m-d'); 
+            }
+            $date_committed = safeImportDate($row_data['date_committed'] ?? '', 'Y-m-d H:i:s');
+            $date_filed = safeImportDate($row_data['date_filed'] ?? '', 'Y-m-d');
+            $received_date = safeImportDate($row_data['received_date'] ?? '', 'Y-m-d H:i:s');
+            $returned_date = safeImportDate($row_data['returned_date'] ?? '', 'Y-m-d H:i:s');
+            $bail = (!empty($row_data['bail_recommended']) && is_numeric($row_data['bail_recommended'])) 
+                ? floatval($row_data['bail_recommended']) : null;
+
+            // Handle optional text fields - MUST BE VARIABLES for bind_param
+            $accused = $row_data['accused'] ?? '';
+            $accused_address = $row_data['accused_address'] ?? '';
+            $accused_contact = $row_data['accused_contact'] ?? '';
+            $complainant = $row_data['complainant'] ?? '';
+            $complainant_address = $row_data['complainant_address'] ?? '';
+            $complainant_contact = $row_data['complainant_contact'] ?? '';
+            
+            // FIX 2: Add "Not Listed" for import
+            $incident_type = trim($row_data['incident_type'] ?? '');
+            if ($incident_type === '') {
+                $incident_type = 'Not Listed';
+            }
+            $modus = $row_data['modus_operandi'] ?? '';
+            $status = $row_data['status'] ?? 'Open'; // Default to Open
+            $nps_docket = $row_data['nps_docket'] ?? '';
+            $offense_crime = $row_data['offense_crime'] ?? '';
+            $received_by = $row_data['received_by'] ?? '';
+            $returned_to = $row_data['returned_to'] ?? '';
+            $evidence_notes = $row_data['evidence_notes'] ?? '';
+
             $insert->bind_param(
-                "sssddsssssssi",
+                "ssisddssssssssssssssdisssss",
                 $row_data['case_no'],
-                $row_data['incident_type'],
+                $incident_type,
                 $brgy['official_name'],
+                $brgy['id'],
                 $brgy['lat'],
                 $brgy['lng'],
-                $row_data['incident_date'],
-                $row_data['modus_operandi'],
+                $incident_date,
+                $modus,
                 $victim_hash,
-                $row_data['status'],
-                $row_data['accused'],
-                $row_data['complainant'],
-                $row_data['date_filed'],
-                $prosecutor_id
+                $status,
+                $accused,
+                $accused_address,
+                $accused_contact,
+                $complainant,
+                $complainant_address,
+                $complainant_contact,
+                $nps_docket,
+                $offense_crime,
+                $date_committed,
+                $date_filed,
+                $bail,
+                $prosecutor_id,
+                $received_by,
+                $received_date,
+                $returned_to,
+                $returned_date,
+                $evidence_notes
             );
 
             if ($insert->execute()) {
                 $imported++;
+
+                // --- START: NEW ATTACHMENT CODE ---
+                
+                // 1. Get the incident_id
+                $incident_id = $conn->insert_id;
+                if ($incident_id == 0) {
+                    // It was an UPDATE, so we must fetch the ID
+                    $id_stmt = $conn->prepare("SELECT id FROM incidents WHERE case_no = ?");
+                    $id_stmt->bind_param("s", $row_data['case_no']);
+                    $id_stmt->execute();
+                    $incident_id = $id_stmt->get_result()->fetch_row()[0];
+                }
+                
+            // 2. Process the 'attachments' column if it's not empty
+                if ($incident_id && !empty($row_data['attachments'])) {
+                    $case_no = $row_data['case_no'];
+
+                    // FIX: Build a reliable server path
+                    $server_path_dir = $_SERVER['DOCUMENT_ROOT'] . "/cyberpablo/uploads/cases/" . $case_no . "/";
+                    $server_path_dir = str_replace('/', DIRECTORY_SEPARATOR, $server_path_dir);
+
+                    // This is the WEB path (what's saved in the DB and used in <a> tags)
+                    $web_path_dir = "../uploads/cases/" . $case_no . "/";
+
+                    // Create the directory if it doesn't exist using the SERVER path
+                    if (!is_dir($server_path_dir)) {
+                        mkdir($server_path_dir, 0755, true);
+                    }
+
+                    // Split filenames by comma
+                    $filenames_from_excel = explode(',', $row_data['attachments']);
+
+                    foreach ($filenames_from_excel as $original_filename) {
+                        $original_filename = trim($original_filename);
+                        if (empty($original_filename)) continue;
+
+                        // --- THIS IS THE NEW ROBUST LOGIC ---
+                        
+                        $file_to_add_server_path = null;
+                        $file_to_add_web_path = null;
+                        $file_to_add_filename = null;
+                        
+                        // Scan the directory for all files
+                        $all_files_in_dir = glob($server_path_dir . "*");
+
+                        if ($all_files_in_dir) {
+                            foreach ($all_files_in_dir as $found_filepath) {
+                                // Make sure it's a file, not a directory
+                                if (!is_file($found_filepath)) {
+                                    continue;
+                                }
+
+                                $found_filename = basename($found_filepath);
+
+                                // Check 1: Is it an exact match?
+                                if ($found_filename === $original_filename) {
+                                    $file_to_add_server_path = $found_filepath;
+                                    $file_to_add_filename = $found_filename;
+                                    $file_to_add_web_path = $web_path_dir . $found_filename;
+                                    break; // Found it, stop looking
+                                }
+
+                                // Check 2: Is it a renamed match? (e.g., 12345_original.jpg)
+                                // This is the logic that handles your observation
+                                if (str_ends_with($found_filename, "_" . $original_filename)) {
+                                    $file_to_add_server_path = $found_filepath;
+                                    $file_to_add_filename = $found_filename;
+                                    $file_to_add_web_path = $web_path_dir . $found_filename;
+                                    break; // Found it, stop looking
+                                }
+                            }
+                        }
+
+                        // If we found a file (either original OR renamed), add it to the database
+                        if ($file_to_add_filename) {
+                            
+                            // PREVENT DUPLICATES: Check if this file is already linked
+                            $dup_att_stmt = $conn->prepare("SELECT id FROM attachments WHERE incident_id = ? AND file_name = ?");
+                            $dup_att_stmt->bind_param("is", $incident_id, $file_to_add_filename); 
+                            $dup_att_stmt->execute();
+                            $dup_result = $dup_att_stmt->get_result();
+
+                            if ($dup_result->num_rows == 0) {
+                                // File exists but isn't in DB, so insert the record
+                                $att_stmt = $conn->prepare(
+                                    "INSERT INTO attachments (incident_id, file_name, file_path, uploaded_by) 
+                                     VALUES (?, ?, ?, ?)"
+                                );
+                                // Use the *actual* filename and web path we found
+                                $att_stmt->bind_param("issi", $incident_id, $file_to_add_filename, $file_to_add_web_path, $_SESSION['user_id']); 
+                                $att_stmt->execute();
+                                $att_stmt->close();
+                            }
+                            $dup_att_stmt->close();
+                        }
+                        // --- END OF NEW LOGIC ---
+                    }
+                }
             } else {
                 $skipped++;
             }
@@ -268,7 +498,7 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
         $upload_status = 'success';
         $upload_message = "Import complete! $imported records imported, $skipped skipped.";
 
-        unset($_SESSION['pending_import_file'], $_SESSION['pending_import_rows']);
+        unset($_SESSION['pending_import_rows']);
     } catch (Exception $e) {
         $conn->rollback();
         $upload_status = 'error';
@@ -472,7 +702,7 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
 </head>
 <body>
     <div class="header">
-        <h1>🔐 CYBERPABLO - Excel Import</h1>
+        <h1>CYBERPABLO - Excel Import</h1>
         <div class="nav">
             <a href="dashboard.php">← Back to Map</a>
             <a href="cases.php">Cases</a>
@@ -501,7 +731,7 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
         <?php endif; ?>
 
         <div class="card">
-            <h2>📤 Upload Excel File</h2>
+            <h2>Upload Excel File</h2>
             <p style="color: #666; margin-bottom: 20px;">
                 Upload an Excel (.xlsx, .xls) or CSV file containing cybercrime incident data.
                 The file will be validated before import.
@@ -516,16 +746,16 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
                 <input type="file" name="excel_file" id="fileInput" accept=".xlsx,.xls,.csv" required>
                 
                 <div style="margin-top: 20px; text-align: center;">
-                    <button type="submit" class="btn btn-primary">📊 Validate & Preview</button>
+                    <button type="submit" class="btn btn-primary">Validate & Preview</button>
                 </div>
             </form>
 
-            <a href="download_template.php" class="template-download">⬇️ Download Excel Template</a>
+            <a href="download_template.php" class="template-download">⬇Download Excel Template</a>
         </div>
 
         <?php if (!empty($preview_data)): ?>
             <div class="card">
-                <h2>👁️ Preview (First 10 Rows)</h2>
+                <h2>Preview (First 10 Rows)</h2>
                 <table>
                     <thead>
                         <tr>
@@ -542,7 +772,7 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
                                 <td><?= htmlspecialchars($row['case_no']) ?></td>
                                 <td><?= htmlspecialchars($row['incident_type']) ?></td>
                                 <td><?= htmlspecialchars($row['barangay']) ?></td>
-                                <td><?= htmlspecialchars($row['incident_date']) ?></td>
+                                <td><?= htmlspecialchars(date('Y-m-d', strtotime($row['incident_date']))) ?></td>
                                 <td><?= htmlspecialchars($row['status']) ?></td>
                             </tr>
                         <?php endforeach; ?>
@@ -552,32 +782,16 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
                     <?php if (empty($errors) || $upload_status === 'warning'): ?>
                         <form method="POST" style="margin-top: 20px; text-align: center;">
                             <button type="submit" name="confirm_import" class="btn btn-success">
-                                ✅ Confirm & Import All Records
+                                Confirm & Import All Records
                             </button>
                             <button type="button" class="btn btn-secondary" onclick="location.reload()">
-                                ❌ Cancel
+                                Cancel
                             </button>
                         </form>
                     <?php endif; ?>
 
             </div>
         <?php endif; ?>
-
-        <div class="card">
-            <h2>📋 Required Columns</h2>
-            <ul style="line-height: 1.8; color: #555;">
-                <li><strong>case_no</strong> - Unique case identifier (e.g., CYBER-2025-0001)</li>
-                <li><strong>incident_type</strong> - Phishing | Online Fraud | Identity Theft | Cyber Harassment | Others</li>
-                <li><strong>barangay</strong> - Must match official barangay names in database</li>
-                <li><strong>incident_date</strong> - Format: YYYY-MM-DD</li>
-                <li><strong>modus_operandi</strong> - Description of the crime method</li>
-                <li><strong>status</strong> - Open | Under Investigation | Closed</li>
-                <li><strong>accused</strong> - Name of accused (optional)</li>
-                <li><strong>complainant</strong> - Name of complainant (will be hashed)</li>
-                <li><strong>date_filed</strong> - Date case was filed (YYYY-MM-DD)</li>
-                <li><strong>prosecutor</strong> - Assigned prosecutor name (optional)</li>
-            </ul>
-        </div>
     </div>
 
     <script>
