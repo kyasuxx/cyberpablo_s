@@ -11,10 +11,12 @@ $sql = "SELECT
             i.incident_date,
             i.status,
             i.modus_operandi,
+            i.accused,         /* <--- NEW */
+            i.complainant,     /* <--- NEW */
             b.official_name,
             b.alt_name
         FROM incidents i 
-        LEFT JOIN barangays b ON i.barangay_id = b.id -- FIX 1: Use fast, indexed JOIN
+        LEFT JOIN barangays b ON i.barangay_id = b.id
         WHERE 1=1";
 
 $params = []; 
@@ -101,12 +103,15 @@ while ($row = $result->fetch_assoc()) {
     $data[] = [
         'case_no' => $row['case_no'],
         'incident_type' => $row['incident_type'],
-        'barangay' => $row['official_name'] ?? 'Unknown', // Use official name
+        'barangay' => $row['official_name'] ?? 'Unknown',
         'lat' => $lat,
         'lng' => $lng,
         'incident_date' => $row['incident_date'],
         'status' => $row['status'],
-        'modus_operandi' => $row['modus_operandi']
+        'modus_operandi' => $row['modus_operandi'],
+        // --- ADD THESE TWO LINES ---
+        'accused' => $row['accused'] ?? 'Unknown',
+        'complainant' => $row['complainant'] ?? 'Unknown'
     ];
 }
 

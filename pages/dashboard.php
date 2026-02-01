@@ -2,6 +2,29 @@
 session_start();
 require_once 'config/connection.php';
 
+// --- HOTSPOT DETECTION ALGORITHM ---
+$alert_threshold = 3; // TRIGGER ALERT if a barangay has 3+ active cases
+$hotspot_alert = [];
+
+// Scan for barangays with high "Open" or "Under Investigation" cases
+$h_sql = "SELECT b.official_name, COUNT(*) as count 
+          FROM incidents i 
+          JOIN barangays b ON i.barangay_id = b.id 
+          WHERE i.status IN ('Open', 'Under Investigation') 
+          GROUP BY i.barangay_id 
+          HAVING count >= ?";
+          
+$h_stmt = $conn->prepare($h_sql);
+$h_stmt->bind_param("i", $alert_threshold);
+$h_stmt->execute();
+$h_result = $h_stmt->get_result();
+
+while ($row = $h_result->fetch_assoc()) {
+    $hotspot_alert[] = $row['official_name'] . " (" . $row['count'] . " active cases)";
+}
+// Pass PHP array to JavaScript safely
+$js_hotspots = json_encode($hotspot_alert);
+
 $barangay_list = [];
 $barangay_result = $conn->query("SELECT id, official_name FROM barangays ORDER BY official_name");
 while ($b = $barangay_result->fetch_assoc()) {
@@ -16,8 +39,6 @@ if (!isset($_SESSION['user_id'])) {
 $user_id = $_SESSION['user_id'];
 $username = $_SESSION['username'];
 $role = $_SESSION['role'];
-
-
 
 // Log audit
 $ip = $_SERVER['REMOTE_ADDR'];
@@ -41,6 +62,18 @@ $stmt->execute();
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; }
         
+        /* Remove the ugly square focus box on clicked map shapes */
+        path.leaflet-interactive:focus {
+            outline: none;
+        }
+
+        /* Optional: Ensure the cursor looks like a pointer when hovering over barangays */
+        path.leaflet-interactive {
+            cursor: pointer;
+            transition: fill-opacity 0.2s, stroke-width 0.2s; /* Smooth animation */
+        }
+
+
         .header {
             background: linear-gradient(135deg, #003366 0%, #004d99 100%);
             color: white;
@@ -93,6 +126,7 @@ $stmt->execute();
         .map-container {
             position: relative;
             height: calc(100vh - 70px);
+            overflow: hidden; /* Prevent horizontal scroll when sidebar opens */
         }
         
         #map {
@@ -100,7 +134,8 @@ $stmt->execute();
             width: 100%;
         }
         
-        .map-controls {
+        /* --- FLOATING CONTROLS (BUTTONS ONLY) --- */
+        .map-buttons {
             position: absolute;
             top: 20px;
             right: 20px;
@@ -108,192 +143,174 @@ $stmt->execute();
             display: flex;
             flex-direction: column;
             gap: 10px;
+            align-items: flex-end;
         }
         
-        .control-panel {
-            background: white;
-            padding: 15px;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-            min-width: 280px;
-        }
-        
-        .control-panel h3 {
-            color: #003366;
-            margin-bottom: 12px;
-            font-size: 16px;
+        .float-btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 50px; /* Pill shape */
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            transition: all 0.3s;
             display: flex;
             align-items: center;
             gap: 8px;
         }
-        
-        .control-group {
-            margin-bottom: 12px;
-        }
-        
-        .control-group label {
-            display: block;
-            color: #555;
-            font-size: 13px;
-            margin-bottom: 5px;
-            font-weight: 500;
-        }
-        
-        .control-group select,
-        .control-group input {
-            width: 100%;
-            padding: 8px 12px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 14px;
-            transition: border-color 0.3s;
-        }
-        
-        .control-group select:focus,
-        .control-group input:focus {
-            outline: none;
-            border-color: #003366;
-        }
-        
-        .toggle-btn {
-            padding: 10px 15px;
-            border: none;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.3s;
-            width: 100%;
-        }
-        
-        .toggle-btn.active {
-            background: #003366;
-            color: white;
-        }
-        
-        .toggle-btn:not(.active) {
-            background: #e0e0e0;
-            color: #666;
-        }
-        
-        .toggle-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        }
-        
-        .stats-panel {
+
+        .float-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
+
+        /* Tools Button (Blue) */
+        .btn-tools {
             background: white;
-            padding: 15px;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            color: #003366;
+            border: 2px solid #003366;
         }
-        
-        .stat-item {
+        .btn-tools:hover { background: #f0f8ff; }
+
+        /* Alert Button (Red Pulse) */
+        .btn-alert {
+            background: #d32f2f;
+            color: white;
+            display: none; /* Hidden by default */
+            animation: alertPulse 2s infinite;
+        }
+        @keyframes alertPulse {
+            0% { box-shadow: 0 0 0 0 rgba(211, 47, 47, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(211, 47, 47, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(211, 47, 47, 0); }
+        }
+
+        /* --- SHARED SIDEBAR STYLES --- */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            right: -360px; /* Hidden off-screen */
+            width: 340px;
+            height: 100%;
+            background: white;
+            z-index: 2000;
+            box-shadow: -4px 0 15px rgba(0,0,0,0.2);
+            transition: right 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+        }
+        .sidebar.open { right: 0; }
+
+        .sidebar-header {
+            padding: 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 8px 0;
-            border-bottom: 1px solid #f0f0f0;
+            border-bottom: 1px solid #eee;
         }
-        
-        .stat-item:last-child {
-            border-bottom: none;
+        .sidebar-header h3 { margin: 0; font-size: 18px; }
+        .sidebar-close {
+            background: none; border: none; font-size: 24px; cursor: pointer; color: white;
         }
-        
-        .stat-label {
-            color: #666;
-            font-size: 13px;
+        .sidebar-content {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+            background: #f9f9f9;
         }
-        
-        .stat-value {
-            font-weight: 600;
-            color: #003366;
-            font-size: 16px;
-        }
-        
-        .legend {
+
+        /* Red Sidebar (Alerts) */
+        #alertSidebar { z-index: 2002; }
+        #alertSidebar .sidebar-header { background: #d32f2f; color: white; }
+
+        /* Blue Sidebar (Controls) */
+        #controlsSidebar { z-index: 2001; }
+        #controlsSidebar .sidebar-header { background: #003366; color: white; }
+
+        /* --- CONTROL WIDGETS (Inside Sidebar) --- */
+        .widget {
             background: white;
             padding: 15px;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            margin-bottom: 15px;
         }
+        .widget h4 { margin: 0 0 12px 0; color: #003366; font-size: 15px; border-bottom: 2px solid #f0f0f0; padding-bottom: 8px; }
+
+        .control-group { margin-bottom: 12px; }
+        .control-group label { display: block; color: #555; font-size: 13px; margin-bottom: 5px; font-weight: 500; }
+        .control-group select, .control-group input {
+            width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;
+        }
+
+        .toggle-btn {
+            padding: 10px; border: none; border-radius: 6px; width: 100%; cursor: pointer; font-weight: 600;
+        }
+        .toggle-btn.active { background: #003366; color: white; }
+        .toggle-btn:not(.active) { background: #e0e0e0; color: #666; }
+
+        /* Stats & Legend Items */
+        .stat-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #f0f0f0; }
+        .stat-value { font-weight: bold; color: #003366; }
         
-        .legend-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 8px;
+        .legend-item { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+        .legend-color { width: 18px; height: 18px; border-radius: 4px; }
+
+        /* --- MODAL --- */
+        .alert-modal {
+            display: none; position: fixed; z-index: 9999; left: 0; top: 0; width: 100%; height: 100%; 
+            background-color: rgba(0,0,0,0.6); backdrop-filter: blur(2px);
         }
+        .alert-modal-content {
+            background-color: #fff; margin: 10% auto; border: 1px solid #d32f2f; width: 90%; max-width: 500px;
+            border-radius: 12px; box-shadow: 0 5px 20px rgba(0,0,0,0.3); animation: slideDown 0.4s ease-out;
+        }
+        .alert-modal-header { background: #d32f2f; color: white; padding: 15px 20px; border-radius: 10px 10px 0 0; }
+        .alert-modal-body { padding: 25px 20px; text-align: center; }
         
-        .legend-color {
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            border: 2px solid #fff;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        .hotspot-list { list-style: none; padding: 0; margin: 15px 0; }
+        .hotspot-item { 
+            background: #ffebee; color: #c62828; padding: 10px; margin-bottom: 5px; 
+            border-radius: 4px; font-weight: bold; text-align: left; border-left: 4px solid #c62828; 
         }
-        
-        .legend-label {
-            font-size: 13px;
-            color: #555;
-        }
-        
-        .leaflet-popup-content {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        
-        .popup-title {
-            font-weight: 600;
-            color: #003366;
-            margin-bottom: 8px;
-            font-size: 15px;
-        }
-        
-        .popup-detail {
-            margin: 5px 0;
-            font-size: 13px;
-            color: #555;
-        }
-        
-        .popup-detail strong {
-            color: #333;
-        }
+
+        @keyframes slideDown { from { transform: translateY(-50px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+        /* Leaflet Popup Fixes */
+        .popup-title { font-weight: bold; color: #003366; margin-bottom: 5px; }
     </style>
 </head>
 
 <body>
-    <div class="header">
-        <h1>CYBERPABLO</h1>
-        <div class="header-right">
-            <div class="nav-links">
-                <a href="cases.php">Cases</a>
-                <?php if ($role === 'admin'): ?>
-                    <a href="import_cases.php">Import</a>
-                    <a href="add_cases.php">Add New Case</a>
-                <?php endif; ?>
-            </div>
-            <div>
-                <span>👤 <strong><?= htmlspecialchars($username) ?></strong> (<?= $role ?>)</span>
-            </div>
-            <a href="logout.php" class="logout">Logout</a>
-        </div>
-    </div>
+
+<?php require_once 'header.php'; ?>
 
     <div class="map-container">
         <div id="map"></div>
         
-        <div class="map-controls">
-            <!-- Visualization Controls -->
-            <div class="control-panel">
-                <h3>Visualization</h3>
-                <button class="toggle-btn active" id="heatmapToggle">
-                    Heatmap Mode
-                </button>
-            </div>
+        <div class="map-buttons">
+            <button id="alertTriggerBtn" class="float-btn btn-alert" onclick="toggleAlertSidebar()">
+                ⚠️ ALERTS (<span id="alertCount">0</span>)
+            </button>
             
-            <!-- Filters -->
-            <div class="control-panel">
-                <h3>Filters</h3>
+            <button class="float-btn btn-tools" onclick="toggleControlsSidebar()">
+                🛠️ Map Tools
+            </button>
+        </div>
+    </div>
+
+    <div id="controlsSidebar" class="sidebar">
+        <div class="sidebar-header">
+            <h3>🛠️ Filters & Data</h3>
+            <button class="sidebar-close" onclick="toggleControlsSidebar()">&times;</button>
+        </div>
+        <div class="sidebar-content">
+            
+            <div class="widget">
+                <h4>Visualization Mode</h4>
+                <button class="toggle-btn active" id="heatmapToggle">Heatmap View</button>
+            </div>
+
+            <div class="widget">
+                <h4>Filters</h4>
                 <div class="control-group">
                     <label>Incident Type:</label>
                     <select id="typeFilter">
@@ -324,54 +341,53 @@ $stmt->execute();
                     <select id="barangayFilter">
                         <option value="">All Barangays</option>
                         <?php foreach ($barangay_list as $barangay): ?>
-                            <option value="<?= $barangay['id'] ?>">
-                                <?= htmlspecialchars($barangay['official_name']) ?>
-                            </option>
+                            <option value="<?= $barangay['id'] ?>"><?= htmlspecialchars($barangay['official_name']) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
             </div>
-            
-            <!-- Stats -->
-            <div class="stats-panel">
-                <h3 style="color: #003366; margin-bottom: 10px;">Statistics</h3>
-                <div class="stat-item">
-                    <span class="stat-label">Total Incidents</span>
-                    <span class="stat-value" id="totalStat">0</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">Open Cases</span>
-                    <span class="stat-value" id="openStat">0</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">Investigating</span>
-                    <span class="stat-value" id="investigatingStat">0</span>
-                </div>
+
+            <div class="widget">
+                <h4>Current Statistics</h4>
+                <div class="stat-item"><span>Total Incidents</span><span class="stat-value" id="totalStat">0</span></div>
+                <div class="stat-item"><span>Open Cases</span><span class="stat-value" id="openStat">0</span></div>
+                <div class="stat-item"><span>Investigating</span><span class="stat-value" id="investigatingStat">0</span></div>
             </div>
-            
-            <!-- Legend -->
-            <div class="legend">
-                <h3 style="color: #003366; margin-bottom: 10px;">🗺️ Legend</h3>
-                <div class="legend-item">
-                    <div class="legend-color" style="background: #f44336;"></div>
-                    <span class="legend-label">Phishing</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background: #ff9800;"></div>
-                    <span class="legend-label">Online Fraud</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background: #9c27b0;"></div>
-                    <span class="legend-label">Identity Theft</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background: #e91e63;"></div>
-                    <span class="legend-label">Cyber Harassment</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background: #607d8b;"></div>
-                    <span class="legend-label">Others</span>
-                </div>
+
+            <div class="widget">
+                <h4>Legend</h4>
+                <div class="legend-item"><div class="legend-color" style="background: #f44336;"></div><span>Phishing</span></div>
+                <div class="legend-item"><div class="legend-color" style="background: #ff9800;"></div><span>Online Fraud</span></div>
+                <div class="legend-item"><div class="legend-color" style="background: #9c27b0;"></div><span>Identity Theft</span></div>
+                <div class="legend-item"><div class="legend-color" style="background: #e91e63;"></div><span>Cyber Harassment</span></div>
+                <div class="legend-item"><div class="legend-color" style="background: #607d8b;"></div><span>Others</span></div>
+            </div>
+
+        </div>
+    </div>
+
+    <div id="alertSidebar" class="sidebar">
+        <div class="sidebar-header">
+            <h3>⚠️ Rampant Areas</h3>
+            <button class="sidebar-close" onclick="toggleAlertSidebar()">&times;</button>
+        </div>
+        <div class="sidebar-content">
+            <p style="font-size: 14px; color: #666; margin-bottom: 15px;">
+                The following areas have exceeded the threshold of <strong><?= $alert_threshold ?> active cases</strong>.
+            </p>
+            <ul id="sidebarHotspotList" class="hotspot-list"></ul>
+        </div>
+    </div>
+
+    <div id="hotspotModal" class="alert-modal">
+        <div class="alert-modal-content">
+            <div class="alert-modal-header">
+                <h2 style="margin:0;">⚠️ CRITICAL ALERT</h2>
+            </div>
+            <div class="alert-modal-body">
+                <p><strong>System Activity Detected:</strong><br>The following areas have reached "Rampant" status.</p>
+                <ul id="hotspotList" class="hotspot-list"></ul>
+                <button class="float-btn" style="background: #333; color: white; width: 100%; justify-content: center;" onclick="closeModal()">Acknowledge</button>
             </div>
         </div>
     </div>
@@ -381,10 +397,26 @@ $stmt->execute();
 <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 <script>
     const map = L.map('map').setView([14.0702, 121.3256], 13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors' }).addTo(map);
 
+    // Sidebar Toggles
+    function toggleControlsSidebar() {
+        document.getElementById('controlsSidebar').classList.toggle('open');
+        // Close alert sidebar if open to avoid overlap
+        document.getElementById('alertSidebar').classList.remove('open');
+    }
+
+    function toggleAlertSidebar() {
+        document.getElementById('alertSidebar').classList.toggle('open');
+        // Close controls sidebar if open
+        document.getElementById('controlsSidebar').classList.remove('open');
+    }
+
+    function closeModal() {
+        document.getElementById('hotspotModal').style.display = 'none';
+    }
+
+    // Initialize Choices.js
     new Choices('#barangayFilter', { searchEnabled: true });
 
     let allIncidents = [];
@@ -393,160 +425,176 @@ $stmt->execute();
     let isHeatmapMode = true;
 
     const typeColors = {
-        'Phishing': '#f44336',
-        'Online Fraud': '#ff9800',
-        'Identity Theft': '#9c27b0',
-        'Cyber Harassment': '#e91e63',
-        'Others': '#607d8b'
+        'Phishing': '#f44336', 'Online Fraud': '#ff9800', 'Identity Theft': '#9c27b0', 'Cyber Harassment': '#e91e63', 'Others': '#607d8b'
     };
 
-
-
-    // Load incidents with optional filters
     function loadIncidents() {
         const url = new URL('../api/incidents.php', window.location.href);
+        const ids = ['typeFilter', 'statusFilter', 'barangayFilter', 'dateFrom', 'dateTo'];
+        const params = { type: 'type', status: 'status', barangay: 'barangay', dateFrom: 'date_from', dateTo: 'date_to' };
         
-        const type = document.getElementById('typeFilter').value;
-        const status = document.getElementById('statusFilter').value;
-        const barangay = document.getElementById('barangayFilter').value; // <-- ADD THIS
-        const dateFrom = document.getElementById('dateFrom').value;
-        const dateTo = document.getElementById('dateTo').value;
-
-        if (type) url.searchParams.set('type', type);
-        if (status) url.searchParams.set('status', status);
-        if (barangay) url.searchParams.set('barangay', barangay); // <-- ADD THIS
-        if (dateFrom) url.searchParams.set('date_from', dateFrom);
-        if (dateTo) url.searchParams.set('date_to', dateTo);
+        ids.forEach(id => {
+            const val = document.getElementById(id).value;
+            if (val) url.searchParams.set(params[id.replace('Filter','')], val);
+        });
 
         fetch(url)
-            .then(res => {
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                return res.json();
-            })
+            .then(res => res.json())
             .then(data => {
-                allIncidents = data; // This is now a filtered list from the server
+                allIncidents = data;
                 renderMap(allIncidents);
                 updateStats(allIncidents);
             })
-            .catch(err => {
-                console.error('API Error:', err);
-                alert('Failed to load data. Check API path.');
-            });
+            .catch(err => console.error(err));
     }
 
-    // Initial load
     loadIncidents();
 
     function renderMap(incidents) {
-    // Clear existing layers
-    if (heatmapLayer) map.removeLayer(heatmapLayer);
-    if (markerClusterGroup) map.removeLayer(markerClusterGroup);
+        if (heatmapLayer) map.removeLayer(heatmapLayer);
+        if (markerClusterGroup) map.removeLayer(markerClusterGroup);
 
-    // Filter valid incidents
-    const validIncidents = incidents.filter(inc => {
-        const lat = parseFloat(inc.lat);
-        const lng = parseFloat(inc.lng);
-        return !isNaN(lat) && !isNaN(lng) && 
-               lat !== 0 && lng !== 0 && 
-               lat >= -90 && lat <= 90 && 
-               lng >= -180 && lng <= 180;
-    });
-
-    if (validIncidents.length === 0) {
-        // Optional: Show message
-        alert('No incidents with valid GPS coordinates.');
-        return;
-    }
-
-    if (isHeatmapMode) {
-        const heatData = validIncidents.map(inc => [inc.lat, inc.lng, 0.8]);
-        heatmapLayer = L.heatLayer(heatData, {
-            radius: 25,
-            blur: 15,
-            maxZoom: 17,
-            gradient: { 0.0: 'blue', 0.5: 'lime', 0.7: 'yellow', 1.0: 'red' }
-        }).addTo(map);
-    } else {
-        markerClusterGroup = L.markerClusterGroup({
-            maxClusterRadius: 50,
-            spiderfyOnMaxZoom: true,
-            showCoverageOnHover: false
+        const valid = incidents.filter(inc => {
+            const lat = parseFloat(inc.lat), lng = parseFloat(inc.lng);
+            return !isNaN(lat) && lat !== 0;
         });
 
-        validIncidents.forEach(inc => {
-            const marker = L.circleMarker([inc.lat, inc.lng], {
-                radius: 8,
-                fillColor: typeColors[inc.incident_type] || '#607d8b',
-                color: '#fff',
-                weight: 2,
-                fillOpacity: 0.8
-            }).bindPopup(`
-                <div class="popup-title">${inc.case_no}</div>
-                <div class="popup-detail"><strong>Type:</strong> ${inc.incident_type}</div>
-                <div class="popup-detail"><strong>Barangay:</strong> ${inc.barangay}</div>
-                <div class="popup-detail"><a href="cases.php?search=${inc.case_no}" style="color: #003366;">View Details</a></div>
-            `);
-            markerClusterGroup.addLayer(marker);
-        });
-
-        map.addLayer(markerClusterGroup);
+        if (isHeatmapMode) {
+            const heatData = valid.map(inc => [inc.lat, inc.lng, 0.8]);
+            heatmapLayer = L.heatLayer(heatData, { radius: 25, blur: 15, maxZoom: 17, gradient: { 0.0: 'blue', 0.5: 'lime', 0.7: 'yellow', 1.0: 'red' } }).addTo(map);
+        } else {
+            markerClusterGroup = L.markerClusterGroup({ maxClusterRadius: 50 });
+            valid.forEach(inc => {
+                const marker = L.circleMarker([inc.lat, inc.lng], {
+                    radius: 8, fillColor: typeColors[inc.incident_type] || '#607d8b', color: '#fff', weight: 2, fillOpacity: 0.8
+                }).bindPopup(`
+                    <div class="popup-title">${inc.case_no}</div>
+                    <div><strong>Type:</strong> ${inc.incident_type}</div>
+                    <div><strong>Brgy:</strong> ${inc.barangay}</div>
+                    <hr style="margin:5px 0; border:0; border-top:1px solid #eee;">
+                    <div><a href="cases.php?search=${inc.case_no}">View Case &raquo;</a></div>
+                `);
+                markerClusterGroup.addLayer(marker);
+            });
+            map.addLayer(markerClusterGroup);
+        }
     }
-}
 
     function updateStats(incidents) {
         document.getElementById('totalStat').textContent = incidents.length;
-        document.getElementById('openStat').textContent = 
-            incidents.filter(i => i.status === 'Open').length;
-        document.getElementById('investigatingStat').textContent = 
-            incidents.filter(i => i.status === 'Under Investigation').length;
+        document.getElementById('openStat').textContent = incidents.filter(i => i.status === 'Open').length;
+        document.getElementById('investigatingStat').textContent = incidents.filter(i => i.status === 'Under Investigation').length;
     }
 
-    function filterIncidents() {
-        loadIncidents();
-    }
-
-    // Heatmap toggle
+    // Event Listeners
     document.getElementById('heatmapToggle').addEventListener('click', function() {
         isHeatmapMode = !isHeatmapMode;
-        this.textContent = isHeatmapMode ? 'Heatmap Mode' : 'Marker Mode';
+        this.textContent = isHeatmapMode ? 'Heatmap View' : 'Marker View';
         this.classList.toggle('active', isHeatmapMode);
-        filterIncidents(); // Re-render with current filters
+        loadIncidents();
     });
 
-        // Filters — type & status reload from server, date filters client-side
-        document.getElementById('typeFilter').addEventListener('change', () => {
-            loadIncidents();
-        });
-        document.getElementById('statusFilter').addEventListener('change', () => {
-            loadIncidents();
-        });
-        document.getElementById('barangayFilter').addEventListener('change', () => { // <-- ADD THIS
-            loadIncidents();
-        });
-        document.getElementById('dateFrom').addEventListener('change', filterIncidents);
-        document.getElementById('dateTo').addEventListener('change', filterIncidents);
+    ['typeFilter', 'statusFilter', 'barangayFilter', 'dateFrom', 'dateTo'].forEach(id => {
+        document.getElementById(id).addEventListener('change', loadIncidents);
+    });
 
-    // Check for URL parameters (when coming from cases.php)
-    const urlParams = new URLSearchParams(window.location.search);
-    const targetLat = urlParams.get('lat');
-    const targetLng = urlParams.get('lng');
-    const targetCase = urlParams.get('case');
-
-    if (targetLat && targetLng) {
-        setTimeout(() => {
-            map.setView([parseFloat(targetLat), parseFloat(targetLng)], 17);
+    // Alert Logic
+    const hotspots = <?= $js_hotspots ?>;
+    window.addEventListener('load', function() {
+        if (hotspots.length > 0) {
+            document.getElementById('alertTriggerBtn').style.display = 'flex';
+            document.getElementById('alertCount').textContent = hotspots.length;
             
-            if (!isHeatmapMode && markerClusterGroup) {
-                markerClusterGroup.eachLayer(layer => {
-                    const latlng = layer.getLatLng();
-                    if (Math.abs(latlng.lat - parseFloat(targetLat)) < 0.0001 &&
-                        Math.abs(latlng.lng - parseFloat(targetLng)) < 0.0001) {
-                        layer.openPopup();
-                    }
+            const populate = (listId) => {
+                const list = document.getElementById(listId);
+                hotspots.forEach(area => {
+                    const li = document.createElement('li');
+                    li.className = 'hotspot-item';
+                    li.innerHTML = '🔥 ' + area;
+                    list.appendChild(li);
                 });
-            }
-        }, 500);
-    }
+            };
+            
+            populate('hotspotList'); // Modal list
+            populate('sidebarHotspotList'); // Sidebar list
+            document.getElementById('hotspotModal').style.display = 'block';
+        }
+    });
+
+    // --- NEW: Load Barangay Borders (Offline Reverse Geocoding) ---
+    fetch('../api/san_pablo_barangays.json')
+        .then(response => response.json())
+        .then(data => {
+            // Add the GeoJSON layer to the map
+            const borderLayer = L.geoJSON(data, {
+                style: function(feature) {
+                    return {
+                        color: "#FF5722",       // Orange borders
+                        weight: 1.5,              // Thin lines
+                        opacity: 0.6,
+                        fillColor: "#FF5722",   // Slight fill
+                        fillOpacity: 0.05       // Very transparent fill
+                    };
+                },
+                onEachFeature: function(feature, layer) {
+                    // Get Barangay Name from the JSON properties
+                    // Note: Your file uses 'adm4_en' for the name
+                    const bgyName = feature.properties.adm4_en; 
+
+                    // 1. Show Name on Hover (Tooltip)
+                    layer.bindTooltip(bgyName, {
+                        permanent: false,
+                        direction: 'center',
+                        className: 'bgy-label' // We can style this in CSS
+                    });
+
+                    // 2. Click to Filter (The "Reverse Geocoding" Interaction)
+                    layer.on('click', function(e) {
+                        // Highlight the clicked barangay
+                        borderLayer.resetStyle(); // Reset others
+                        layer.setStyle({
+                            weight: 3,
+                            color: '#003366',
+                            fillOpacity: 0.2
+                        });
+
+                        // Alert user (or auto-fill a form)
+                        // alert("You selected: " + bgyName); 
+                        
+                        // AUTO-FILTER: If you want clicking the map to filter the dashboard!
+                        const filterDropdown = document.getElementById('barangayFilter');
+                        if (filterDropdown) {
+                            // Try to match the dropdown value
+                            // (You might need to ensure dropdown names match 'adm4_en' exactly)
+                            // loop options to find match...
+                            for (let i = 0; i < filterDropdown.options.length; i++) {
+                                if (filterDropdown.options[i].text.toUpperCase().includes(bgyName.toUpperCase())) {
+                                    filterDropdown.selectedIndex = i;
+                                    filterDropdown.dispatchEvent(new Event('change')); // Trigger reload
+                                    break;
+                                }
+                            }
+                        }
+                    });
+                    
+                    // Highlight on Hover
+                    layer.on('mouseover', function() {
+                        if (this.options.weight !== 3) { // Don't override click style
+                            this.setStyle({ weight: 2, fillOpacity: 0.15 });
+                        }
+                    });
+                    layer.on('mouseout', function() {
+                        if (this.options.weight !== 3) {
+                            this.setStyle({ weight: 1, fillOpacity: 0.05 });
+                        }
+                    });
+                }
+            }).addTo(map);
+            
+            // Optional: Fit map to San Pablo borders
+            map.fitBounds(borderLayer.getBounds());
+        })
+        .catch(err => console.error("Error loading borders:", err));
 </script>
 </body>
 </html>

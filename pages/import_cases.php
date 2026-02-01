@@ -701,14 +701,7 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>CYBERPABLO - Excel Import</h1>
-        <div class="nav">
-            <a href="dashboard.php">← Back to Map</a>
-            <a href="cases.php">Cases</a>
-            <a href="logout.php">Logout</a>
-        </div>
-    </div>
+   <?php require_once 'header.php'; ?>
 
     <div class="container">
         <?php if ($upload_message): ?>

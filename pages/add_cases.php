@@ -55,6 +55,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $barangay_id = $_POST['barangay_id'];
         $incident_date = $_POST['incident_date'];
         $status = $_POST['status'];
+        $incident_type = $_POST['incident_type'];
+        $modus = $_POST['modus_operandi'];
+
+        // Logic: If 'Others' is selected, prepend the specific details to Modus Operandi
+        if ($incident_type === 'Others' && !empty($_POST['other_specify'])) {
+            $specific_type = strtoupper(trim($_POST['other_specify']));
+            $modus = "SPECIFIC CRIME: " . $specific_type . "\n\n" . $modus;
+        }
 
         // Get Barangay Lat/Lng from DB
         $brgy_stmt = $conn->prepare("SELECT lat, lng, official_name FROM barangays WHERE id = ?");
@@ -100,7 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $brgy['lat'],
             $brgy['lng'],
             $incident_date,
-            $_POST['modus_operandi'],
+            $modus,
             $hashed_victim_id,
             $status,
             $_POST['accused'],
@@ -266,7 +274,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <div class="form-group">
                     <label for="incident_type" class="required">Incident Type</label>
-                    <select id="incident_type" name="incident_type" required>
+                    <select id="incident_type" name="incident_type" required onchange="toggleOtherInput(this)">
                         <option value="">Select a type...</option>
                         <option value="Phishing">Phishing</option>
                         <option value="Online Fraud">Online Fraud</option>
@@ -274,9 +282,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <option value="Cyber Harassment">Cyber Harassment</option>
                         <option value="Sextortion">Sextortion</option>
                         <option value="Online Libel">Online Libel</option>
-                        <option value="Not Listed">Not Listed</option>
+                        <option value="Hacking">Hacking</option>
                         <option value="Others">Others</option>
                     </select>
+
+                    <input type="text" id="other_specify" name="other_specify" 
+                           placeholder="Please specify the crime..." 
+                           style="display: none; margin-top: 10px; border-color: #003366;">
                 </div>
 
                 <div class="form-group">
@@ -408,21 +420,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 
     <script>
-        // Initialize searchable dropdowns
         document.addEventListener('DOMContentLoaded', function() {
-            new Choices('#barangay_id', {
-                searchEnabled: true,
-                shouldSort: false,
-            });
-            new Choices('#prosecutor_id', {
-                searchEnabled: true,
-                shouldSort: false,
-            });
-            new Choices('#incident_type', {
-                searchEnabled: false,
-            });
-            new Choices('#status', {
-                searchEnabled: false,
+            // 1. Initialize Choices for Barangay and Prosecutor
+            new Choices('#barangay_id', { searchEnabled: true, shouldSort: false });
+            new Choices('#prosecutor_id', { searchEnabled: true, shouldSort: false });
+            new Choices('#status', { searchEnabled: false });
+
+            // 2. Initialize Choices for Incident Type with Event Listener
+            const typeSelect = new Choices('#incident_type', { searchEnabled: false });
+            const otherInput = document.getElementById('other_specify');
+
+            // Listen for changes
+            document.getElementById('incident_type').addEventListener('change', function(event) {
+                if (event.target.value === 'Others') {
+                    otherInput.style.display = 'block';
+                    otherInput.required = true; // Make it required if "Others" is picked
+                } else {
+                    otherInput.style.display = 'none';
+                    otherInput.required = false;
+                    otherInput.value = ''; // Clear it
+                }
             });
         });
     </script>

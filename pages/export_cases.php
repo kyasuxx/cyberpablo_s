@@ -324,9 +324,9 @@ $sheet->getStyle('A' . $summaryRow)->applyFromArray([
 
 // Count statistics
 $totalCases = $row - 2;
-$openCases = 0;
-$underInvestigation = 0;
-$closedCases = 0;
+// $openCases = 0;
+// $underInvestigation = 0;
+// $closedCases = 0;
 
 // // Re-query for statistics
 // $stmt->execute();

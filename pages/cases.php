@@ -100,7 +100,19 @@ $total = $count_stmt->get_result()->fetch_row()[0];
 $pages = ceil($total / $limit);
 
 // Main query with pagination
-$sql .= " ORDER BY i.incident_date DESC LIMIT ? OFFSET ?";
+// $sql .= " ORDER BY i.incident_date DESC LIMIT ? OFFSET ?";
+// --- SORTING ALGORITHM START ---
+// Check if user clicked a sort button, otherwise default to Newest Case First
+$sort_order = $_GET['sort'] ?? 'desc'; 
+
+if ($sort_order === 'asc') {
+    // Oldest First (CYBER-2025-0001 -> CYBER-2026-0001)
+    $sql .= " ORDER BY i.case_no ASC LIMIT ? OFFSET ?";
+} else {
+    // Newest First (CYBER-2026-0001 -> CYBER-2025-0001)
+    $sql .= " ORDER BY i.case_no DESC LIMIT ? OFFSET ?";
+}
+// --- SORTING ALGORITHM END ---
 $params[] = $limit; $params[] = $offset; $types .= "ii";
 
 $stmt = $conn->prepare($sql);
@@ -301,18 +313,8 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>CYBERPABLO</h1>
-        <div class="nav">
-            <a href="dashboard.php">Map</a>
-            <a href="cases.php">Cases</a>
-            <?php if ($_SESSION['role'] === 'admin'): ?>
-                <a href="import_cases.php">Import Excel</a>
-                <a href="add_cases.php">Add New Case</a>
-            <?php endif; ?>
-            <a href="logout.php">Logout</a>
-        </div>
-    </div>
+
+<?php require_once 'header.php'; ?>
 
     <div class="container">
         <h2>Cases Dashboard (<?= $total ?> Total)</h2>
@@ -466,7 +468,13 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
         <!-- Table -->
         <table>
             <tr>
-                <th>Case No</th>
+                <th>
+                    <a href="?sort=<?= ($sort_order === 'desc') ? 'asc' : 'desc' ?>&search=<?= urlencode($search) ?>&type=<?= $type ?>&barangay=<?= urlencode($barangay) ?>&status=<?= $status ?>" 
+                    style="color: white; text-decoration: none; display: flex; align-items: center; gap: 5px;">
+                        Case No 
+                        <?php if($sort_order === 'asc'): ?> ▲ <?php else: ?> ▼ <?php endif; ?>
+                    </a>
+                </th>
                 <th>Type</th>
                 <th>Accused</th>
                 <th>Complainant</th>
@@ -621,7 +629,7 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
 
                     <div class="action-buttons">
                         <a href="edit_cases.php?id=<?= urlencode($row['case_no']) ?>">Edit Case</a>
-                        <a href="print_blotter.php?id=<?= $row['id'] ?>" target="_blank" class="print">Print Blotter</a>
+                        <a href="print_blotter.php?id=<?= $row['id'] ?>" target="_blank" class="action-btn print-btn">Print Blotter </a>
                     </div>
                 </td>
             </tr>
@@ -637,7 +645,9 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
             <?php endfor; ?>
         </div>
 
-        <a href="export_cases.php" class="export">Export to Excel</a>
+        <button onclick="exportSmartData()" class="export" style="background: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; float: right; font-size: 14px; font-weight: bold;">
+    📊      Export Current Data
+        </button>
     </div>
 
 <script>
@@ -676,14 +686,104 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
                     const attachmentsDiv = document.getElementById('attachments-' + id);
                     attachmentsDiv.innerHTML = data.attachments;
                     historyDiv.innerHTML = data.history;
+
+                    // --- ADD THIS BLOCK HERE ---
+                    // Dynamic Print Button Injection
+                    // Ensure you have a container for this button in your HTML structure, 
+                    // or append it to an existing container like 'detailsRow'
+                    
+                    // Option A: Append to the History Section (Easiest)
+                    if (data.print_url) {
+                        const printBtnHtml = `<div style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 15px; text-align: right;">
+                            <a href="${data.print_url}" target="_blank" style="background: #003366; color: white; padding: 8px 15px; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 13px;">
+                                🖨️ Generate Official Blotter
+                            </a>
+                        </div>`;
+                        historyDiv.insertAdjacentHTML('beforeend', printBtnHtml);
+                    }
+                    // ---------------------------
                 })
                 .catch(error => {
                     console.error('Error fetching details:', error);
                     const attachmentsDiv = document.getElementById('attachments-' + id);
                     attachmentsDiv.innerHTML = '<p style="color: red;">Could not load attachments.</p>';
                     historyDiv.innerHTML = '<p style="color: red;">Could not load history.</p>';
-                });
+                });    
         }
+    }
+
+    function exportSmartData() {
+        // 1. Get current values from the filter form
+        const search = document.querySelector('input[name="search"]').value;
+        const type = document.querySelector('select[name="type"]').value;
+        const barangay = document.querySelector('select[name="barangay"]').value;
+        const status = document.querySelector('select[name="status"]').value;
+        const dateFrom = document.querySelector('input[name="date_from"]').value;
+        const dateTo = document.querySelector('input[name="date_to"]').value;
+        const month = document.querySelector('select[name="month"]').value;
+        const year = document.querySelector('select[name="year"]').value;
+
+        // 2. Build the URL params
+        const params = new URLSearchParams({
+            search: search,
+            type: type,
+            barangay: barangay,
+            status: status,
+            date_from: dateFrom,
+            date_to: dateTo,
+            month: month,
+            year: year
+        });
+
+        // 3. Trigger the download
+        window.location.href = 'export_cases.php?' + params.toString();
+    }
+
+function submitNote(event, incidentId) {
+        event.preventDefault(); // Stop page reload
+        
+        const input = document.getElementById('note-' + incidentId);
+        const typeSelect = document.getElementById('type-' + incidentId);
+        const note = input.value;
+        const type = typeSelect.value;
+        const historyDiv = document.getElementById('history-' + incidentId);
+
+        // UI: Show loading state
+        const originalBtnText = event.target.querySelector('button').innerText;
+        event.target.querySelector('button').innerText = "Saving...";
+        event.target.querySelector('button').disabled = true;
+
+        // Send to backend
+        const formData = new FormData();
+        formData.append('incident_id', incidentId);
+        formData.append('log_type', type);
+        formData.append('note', note);
+
+        fetch('add_case_note.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                // Clear input
+                input.value = '';
+                // Reset button
+                event.target.querySelector('button').innerText = originalBtnText;
+                event.target.querySelector('button').disabled = false;
+                
+                // Force reload of this specific details row to show new data
+                historyDiv.setAttribute('data-loaded', 'false'); 
+                toggleDetails(incidentId); // Re-open triggers re-fetch
+            } else {
+                alert('Error: ' + data.message);
+                event.target.querySelector('button').disabled = false;
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('A network error occurred.');
+        });
     }
 </script>
 </body>
