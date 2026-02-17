@@ -22,36 +22,18 @@ $result = $conn->query($sql);
 <head>
     <meta charset="UTF-8">
     <title>System Audit Trail - CyberPablo</title>
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .back-btn { text-decoration: none; color: #003366; font-weight: bold; }
-        
-        .log-card { background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); overflow: hidden; }
-        
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
-        th { background: #003366; color: white; text-transform: uppercase; font-size: 12px; letter-spacing: 0.5px; }
-        tr:hover { background: #f9f9f9; }
-        
-        .role-badge { padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; text-transform: uppercase; }
-        .role-admin { background: #e3f2fd; color: #1565c0; }
-        .role-user { background: #f3e5f5; color: #7b1fa2; }
-        
-        .action-tag { font-family: monospace; background: #eee; padding: 2px 5px; border-radius: 3px; color: #333; }
-        .ip-address { color: #666; font-size: 12px; }
-    </style>
+    <link rel="stylesheet" href="../assets/css/admin_audit_log.css">
 </head>
 <body>
 
 <div class="header">
     <div>
         <a href="admin_panel.php" class="back-btn">← Back to Panel</a>
-        <h2 style="margin: 5px 0; color: #333;">Security Audit Trail</h2>
-        <p style="color: #666; margin: 0; font-size: 14px;">Monitoring system access and critical actions (RA 10175 Compliance).</p>
+        <h2 class="header-title">Security Audit Trail</h2>
+        <p class="header-subtitle">Monitoring system access and critical actions (RA 10175 Compliance).</p>
     </div>
     <div>
-        <button onclick="window.print()" style="padding: 8px 15px; cursor: pointer;">Print Log</button>
+        <button onclick="window.print()" class="print-btn">Print Log</button>
     </div>
 </div>
 
@@ -68,13 +50,15 @@ $result = $conn->query($sql);
         <tbody>
             <?php while($row = $result->fetch_assoc()): ?>
             <tr>
-                <td style="white-space: nowrap; color: #555;">
+                <td class="timestamp-col">
                     <?= date('M d, Y H:i:s', strtotime($row['timestamp'])) ?>
                 </td>
                 <td>
                     <strong><?= htmlspecialchars($row['username'] ?? 'Unknown') ?></strong>
                     <?php if(isset($row['role'])): ?>
-                        <span class="role-badge role-<?= $row['role'] ?>"><?= $row['role'] ?></span>
+                        <span class="role-badge role-<?= htmlspecialchars($row['role']) ?>">
+                            <?= htmlspecialchars($row['role']) ?>
+                        </span>
                     <?php endif; ?>
                 </td>
                 <td>

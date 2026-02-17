@@ -189,70 +189,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <title>Add New Case - CyberPablo</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
+    <link rel="stylesheet" href="../assets/css/add_cases.css">
     <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f0f2f5; margin: 0; }
-        .header { background: linear-gradient(135deg, #003366 0%, #004d99 100%); color: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
-        .header h1 { font-size: 24px; margin: 0; }
-        .nav-links a { color: #ffcc00; text-decoration: none; font-weight: 500; margin: 0 10px; }
-        .nav-links a.logout { background: #d32f2f; color: white; padding: 8px 20px; border-radius: 6px; }
-        
-        .container { max-width: 1200px; margin: 30px auto; padding: 30px; background: #fff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
-        .form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 25px; }
-        .form-section { border-bottom: 2px solid #003366; padding-bottom: 10px; margin: 30px 0 20px 0; grid-column: 1 / -1; }
-        .form-section h2 { color: #003366; margin: 0; }
-        
-        .form-group { display: flex; flex-direction: column; }
-        .form-group.full-width { grid-column: 1 / -1; }
-        .form-group label { font-weight: 600; margin-bottom: 8px; font-size: 14px; color: #333; }
-        .form-group input,
-        .form-group select,
-        .form-group textarea {
-            padding: 10px;
-            font-size: 14px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-family: inherit;
-        }
-        .form-group textarea { resize: vertical; min-height: 80px; }
-        .form-group input[type="file"] { padding: 5px; }
-        
-        /* Required field styling */
-        .form-group label.required::after { content: ' *'; color: #d32f2f; }
-        
-        .btn-submit {
-            grid-column: 3 / -1;
-            background: #28a745;
-            color: white;
-            font-size: 16px;
-            font-weight: 600;
-            padding: 12px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-        .btn-submit:hover { background: #218838; }
-        
-        /* Choices.js custom style */
-        .choices__inner { background: #fff; border-radius: 6px; padding: 6px 10px; }
-        .choices__list--dropdown { border-radius: 6px; }
-        
-        /* Message styling */
-        .message { padding: 15px; border-radius: 6px; margin-bottom: 20px; font-weight: 500; }
-        .message.success { background: #d4edda; color: #155724; }
-        .message.error { background: #f8d7da; color: #721c24; }
-    </style>
+
 </head>
 <body>
-    <div class="header">
-        <h1>Add New Case</h1>
-        <div class="nav-links">
-            <a href="dashboard.php">Dashboard</a>
-            <a href="cases.php">Cases</a>
-            <a href="logout.php" class="logout">Logout</a>
-        </div>
-    </div>
+    
+<?php require_once 'header.php'; ?>
 
     <div class="container">
         
@@ -269,12 +212,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <div class="form-group">
                     <label for="case_no" class="required">Case Number</label>
-                    <input type="text" id="case_no" name="case_no" value="<?= htmlspecialchars($new_case_no) ?>" readonly style="background: #eee;">
+                    <input type="text" id="case_no" name="case_no" value="<?= htmlspecialchars($new_case_no) ?>" readonly class="readonly-input">
                 </div>
 
                 <div class="form-group">
                     <label for="incident_type" class="required">Incident Type</label>
-                    <select id="incident_type" name="incident_type" required onchange="toggleOtherInput(this)">
+                    <select id="incident_type" name="incident_type" required>
                         <option value="">Select a type...</option>
                         <option value="Phishing">Phishing</option>
                         <option value="Online Fraud">Online Fraud</option>
@@ -286,9 +229,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <option value="Others">Others</option>
                     </select>
 
-                    <input type="text" id="other_specify" name="other_specify" 
-                           placeholder="Please specify the crime..." 
-                           style="display: none; margin-top: 10px; border-color: #003366;">
+                    <input type="text" id="other_specify" name="other_specify" placeholder="Please specify the crime..." style="display:none; margin-top:10px;">
                 </div>
 
                 <div class="form-group">
@@ -422,7 +363,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             // 1. Initialize Choices for Barangay and Prosecutor
-            new Choices('#barangay_id', { searchEnabled: true, shouldSort: false });
+            const barangayChoice = new Choices('#barangay_id', { searchEnabled: true, shouldSort: false });
             new Choices('#prosecutor_id', { searchEnabled: true, shouldSort: false });
             new Choices('#status', { searchEnabled: false });
 
@@ -430,15 +371,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             const typeSelect = new Choices('#incident_type', { searchEnabled: false });
             const otherInput = document.getElementById('other_specify');
 
-            // Listen for changes
             document.getElementById('incident_type').addEventListener('change', function(event) {
                 if (event.target.value === 'Others') {
                     otherInput.style.display = 'block';
-                    otherInput.required = true; // Make it required if "Others" is picked
+                    otherInput.required = true;
                 } else {
                     otherInput.style.display = 'none';
                     otherInput.required = false;
-                    otherInput.value = ''; // Clear it
+                    otherInput.value = '';
+                }
+            });
+
+            // 3. QoL FEATURE: Default Dates to Today
+            const today = new Date();
+            // Format YYYY-MM-DD for date input
+            const dateString = today.toISOString().split('T')[0];
+            document.getElementById('incident_date').value = dateString;
+            
+            // Format YYYY-MM-DDTHH:MM for datetime-local input
+            today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+            const dateTimeString = today.toISOString().slice(0, 16);
+            document.getElementById('date_committed').value = dateTimeString;
+
+            // 4. QoL FEATURE: Smart Address Auto-Fill
+            document.getElementById('barangay_id').addEventListener('change', function(event) {
+                // Get value and selected text (compatible with Choices.js)
+                const val = event.target.value;
+                if (!val) return; // Exit if they cleared the selection
+                
+                let selectedText = "";
+                if (event.detail && event.detail.label) {
+                    selectedText = event.detail.label;
+                } else {
+                    selectedText = event.target.options[event.target.selectedIndex].text;
+                }
+
+                const standardizedAddress = `${selectedText}, San Pablo City, Laguna`;
+
+                const compAddressEl = document.getElementById('complainant_address');
+                const accAddressEl = document.getElementById('accused_address');
+
+                // Only auto-fill if the input is empty (prevents overwriting custom data)
+                if (compAddressEl.value.trim() === "") {
+                    compAddressEl.value = standardizedAddress;
+                }
+                if (accAddressEl.value.trim() === "") {
+                    accAddressEl.value = standardizedAddress;
                 }
             });
         });

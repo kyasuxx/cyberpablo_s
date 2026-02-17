@@ -38,10 +38,23 @@ $params = []; $types = "";
 
 // Apply filters
 if ($search) {
-    $sql .= " AND (i.case_no LIKE ? OR i.accused LIKE ? OR i.complainant LIKE ? OR b.official_name LIKE ? OR b.alt_name LIKE ? OR i.modus_operandi LIKE ?)";
+    // UPDATED: Added OR checks for 'accused_contact' and 'complainant_contact'
+    $sql .= " AND (i.case_no LIKE ? 
+                   OR i.accused LIKE ? 
+                   OR i.complainant LIKE ? 
+                   OR b.official_name LIKE ? 
+                   OR b.alt_name LIKE ? 
+                   OR i.modus_operandi LIKE ? 
+                   OR i.accused_contact LIKE ? 
+                   OR i.complainant_contact LIKE ?)";
+                   
     $like = "%$search%";
-    $params = array_merge($params, [$like, $like, $like, $like, $like, $like]);
-    $types .= "ssssss";
+    
+    // UPDATED: Added 2 more $like to the array (Total 8 items now)
+    $params = array_merge($params, [$like, $like, $like, $like, $like, $like, $like, $like]);
+    
+    // UPDATED: Added 2 more 's' to the type string (Total 8 's')
+    $types .= "ssssssss";
 }
 if ($type) { 
     $sql .= " AND i.incident_type = ?"; 
@@ -163,154 +176,7 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
 <head>
     <title>Cases - CyberPablo</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <style>
-        body { margin: 0; font-family: Arial; background: #f4f6f9; }
-        .header { background: #003366; color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; }
-        .header h1 { margin: 0; font-size: 22px; }
-        .nav a { color: #ffcc00; margin: 0 10px; text-decoration: none; font-weight: bold; }
-        .container { padding: 20px; }
-        .stats { display: flex; gap: 15px; margin-bottom: 20px; }
-        .stat-box { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); flex: 1; text-align: center; }
-        .stat-box h3 { margin: 0; color: #003366; }
-        
-        /* NEW: Crime Type Stats */
-        .crime-stats { 
-            background: white; 
-            padding: 20px; 
-            border-radius: 8px; 
-            margin-bottom: 20px; 
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        .crime-stats h3 { 
-            margin: 0 0 15px 0; 
-            color: #003366; 
-            font-size: 18px;
-        }
-        .crime-stat-item { 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center;
-            padding: 8px 0; 
-            border-bottom: 1px solid #eee;
-        }
-        .crime-stat-item:last-child { border-bottom: none; }
-        .crime-stat-bar {
-            flex: 1;
-            height: 20px;
-            background: #e0e0e0;
-            border-radius: 10px;
-            margin: 0 15px;
-            overflow: hidden;
-        }
-        .crime-stat-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #003366, #0066cc);
-            transition: width 0.3s ease;
-        }
-        .crime-stat-count {
-            font-weight: bold;
-            color: #003366;
-            min-width: 40px;
-            text-align: right;
-        }
-        
-        .filters { 
-            background: white; 
-            padding: 15px; 
-            border-radius: 8px; 
-            margin-bottom: 20px; 
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        .filter-row {
-            display: flex; 
-            gap: 10px; 
-            flex-wrap: wrap; 
-            align-items: center;
-            margin-bottom: 10px;
-        }
-        .filter-row:last-child { margin-bottom: 0; }
-        .filter-label {
-            font-weight: bold;
-            color: #003366;
-            margin-right: 10px;
-            min-width: 100px;
-        }
-        .filters input, .filters select, .filters button { 
-            padding: 10px; 
-            border: 1px solid #ddd; 
-            border-radius: 5px; 
-        }
-        .filters button { background: #003366; color: white; cursor: pointer; }
-        .filters button:hover { background: #004d99; }
-        .filters .clear-btn { 
-            background: #d32f2f; 
-            color: white; 
-            text-decoration: none; 
-            padding: 10px 15px;
-            border-radius: 5px;
-            display: inline-block;
-        }
-        
-        table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
-        th { background: #003366; color: white; }
-        tr:hover { background: #f8f9fa; }
-        .status-open { color: #d32f2f; font-weight: bold; }
-        .status-under-investigation { color: #f9a825; font-weight: bold; }
-        .status-closed { color: #388e3c; font-weight: bold; }
-        .pagination { text-align: center; margin: 20px 0; }
-        .pagination a { margin: 0 5px; padding: 8px 12px; background: #003366; color: white; text-decoration: none; border-radius: 5px; }
-        .pagination a.active { background: #ffcc00; color: #003366; }
-        .export { background: #d32f2f; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; float: right; }
-        .alt-name { font-size: 0.85em; color: #666; }
-        .case-row { cursor: pointer; transition: background 0.2s; }
-        .case-row:hover { background: #e3f2fd !important; }
-        .details-row { background: #f9f9f9; }
-        .details-row td { border-top: 2px solid #003366; padding: 20px !important; }
-        .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; font-size: 0.95em; margin-bottom: 15px; }
-        .detail-item { padding: 8px; background: white; border-radius: 5px; border-left: 3px solid #003366; }
-        .detail-label { font-weight: bold; color: #003366; margin-bottom: 3px; }
-        .detail-value { color: #333; }
-        .section-title { 
-            font-size: 16px; 
-            font-weight: bold; 
-            color: #003366; 
-            margin: 15px 0 8px 0; 
-            padding-bottom: 5px; 
-            border-bottom: 2px solid #003366; 
-        }
-        .action-buttons { margin-top: 15px; text-align: right; }
-        .action-buttons a { 
-            background: #003366; 
-            color: white; 
-            padding: 8px 15px; 
-            border-radius: 5px; 
-            text-decoration: none; 
-            margin-left: 5px; 
-            display: inline-block;
-        }
-        .action-buttons a:hover { background: #004d99; }
-        .action-buttons a.print { background: #d32f2f; }
-        .action-buttons a.print:hover { background: #b71c1c; }
-        
-        /* Active filter indicator */
-        .active-filters {
-            background: #e3f2fd;
-            padding: 10px 15px;
-            border-radius: 5px;
-            margin-bottom: 15px;
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-        .filter-tag {
-            background: #003366;
-            color: white;
-            padding: 5px 10px;
-            border-radius: 15px;
-            font-size: 13px;
-        }
-    </style>
+    <link rel="stylesheet" href="../assets/css/cases.css">
 </head>
 <body>
 
@@ -335,31 +201,7 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
             </div>
         </div>
 
-        <!-- NEW: Crime Type Statistics -->
-        <?php if ($crime_stats->num_rows > 0): ?>
-        <div class="crime-stats">
-            <h3>📊 Crime Type Distribution <?= ($date_from || $date_to || $month || $year) ? '(Filtered Period)' : '(All Time)' ?></h3>
-            <?php 
-            $max_count = 0;
-            $crime_data = [];
-            while ($stat = $crime_stats->fetch_assoc()) {
-                $crime_data[] = $stat;
-                if ($stat['count'] > $max_count) $max_count = $stat['count'];
-            }
-            
-            foreach ($crime_data as $stat): 
-                $percentage = ($max_count > 0) ? ($stat['count'] / $max_count * 100) : 0;
-            ?>
-            <div class="crime-stat-item">
-                <span style="min-width: 150px; font-weight: 600;"><?= htmlspecialchars($stat['incident_type']) ?></span>
-                <div class="crime-stat-bar">
-                    <div class="crime-stat-fill" style="width: <?= $percentage ?>%;"></div>
-                </div>
-                <span class="crime-stat-count"><?= $stat['count'] ?></span>
-            </div>
-            <?php endforeach; ?>
-        </div>
-        <?php endif; ?>
+        
 
         <!-- Active Filters Display -->
         <?php if ($search || $type || $barangay || $status || $date_from || $date_to || $month || $year): ?>
@@ -382,85 +224,82 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
         <?php endif; ?>
 
         <!-- Filters -->
-        <div class="filters">
-            <form method="GET">
-                <!-- Row 1: Basic Filters -->
-                <div class="filter-row">
-                    <span class="filter-label">Search:</span>
-                    <input type="text" name="search" placeholder="Case No, Accused, Barangay..." 
-                           value="<?= htmlspecialchars($search) ?>" style="flex: 1; min-width: 250px;">
-                    
-                    <span class="filter-label">Type:</span>
-                    <select name="type">
-                        <option value="">All Types</option>
-                        <option value="Phishing" <?= $type=='Phishing'?'selected':'' ?>>Phishing</option>
-                        <option value="Online Fraud" <?= $type=='Online Fraud'?'selected':'' ?>>Online Fraud</option>
-                        <option value="Cyber Harassment" <?= $type=='Cyber Harassment'?'selected':'' ?>>Cyber Harassment</option>
-                        <option value="Identity Theft" <?= $type=='Identity Theft'?'selected':'' ?>>Identity Theft</option>
-                        <option value="Others" <?= $type=='Others'?'selected':'' ?>>Others</option>
-                    </select>
-                    
-                    <span class="filter-label">Status:</span>
-                    <select name="status">
-                        <option value="">All Status</option>
-                        <option value="Open" <?= $status=='Open'?'selected':'' ?>>Open</option>
-                        <option value="Under Investigation" <?= $status=='Under Investigation'?'selected':'' ?>>Under Investigation</option>
-                        <option value="Closed" <?= $status=='Closed'?'selected':'' ?>>Closed</option>
-                    </select>
+        <div class="modern-filters-card">
+            <form method="GET" id="filterForm">
+                <div class="search-bar-row">
+                    <input type="text" name="search" class="main-search-input" placeholder="Search Case No, Accused, Complainant..." value="<?= htmlspecialchars($search) ?>">
+                    <button type="submit" class="btn-search">Search</button>
+                    <button type="button" class="btn-toggle-filters" onclick="toggleAdvancedFilters()">
+                        Advanced Filters
+                    </button>
+                    <a href="cases.php" class="btn-clear">✖ Clear</a>
                 </div>
 
-                <!-- Row 2: Location -->
-                <div class="filter-row">
-                    <span class="filter-label">Barangay:</span>
-                    <select name="barangay" style="flex: 1; max-width: 300px;">
-                        <option value="">All Barangays</option>
-                        <?php 
-                        $barangay_result->data_seek(0);
-                        while ($b = $barangay_result->fetch_assoc()): 
-                        ?>
-                            <option value="<?= $b['id'] ?>" <?= $barangay==$b['id']?'selected':'' ?>>
-                                <?= $b['official_name'] ?><?= $b['alt_name'] ? " ({$b['alt_name']})" : '' ?>
-                            </option>
-                        <?php endwhile; ?>
-                    </select>
-                </div>
+                <div id="advancedFilters" class="advanced-filters-grid" style="display: <?= ($type || $barangay || $status || $date_from || $month || $year) ? 'grid' : 'none' ?>;">
+                    
+                    <div class="filter-group">
+                        <label>Incident Type</label>
+                        <select name="type" class="modern-select">
+                            <option value="">All Types</option>
+                            <option value="Phishing" <?= $type=='Phishing'?'selected':'' ?>>Phishing</option>
+                            <option value="Online Fraud" <?= $type=='Online Fraud'?'selected':'' ?>>Online Fraud</option>
+                            <option value="Cyber Harassment" <?= $type=='Cyber Harassment'?'selected':'' ?>>Cyber Harassment</option>
+                            <option value="Identity Theft" <?= $type=='Identity Theft'?'selected':'' ?>>Identity Theft</option>
+                            <option value="Others" <?= $type=='Others'?'selected':'' ?>>Others</option>
+                        </select>
+                    </div>
 
-                <!-- Row 3: Date Filters -->
-                <div class="filter-row">
-                    <span class="filter-label">Date Range:</span>
-                    <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>" 
-                           placeholder="From Date">
-                    <span style="margin: 0 5px;">to</span>
-                    <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>" 
-                           placeholder="To Date">
-                    
-                    <span style="margin: 0 15px; color: #999;">OR</span>
-                    
-                    <span class="filter-label">Month:</span>
-                    <select name="month">
-                        <option value="">All Months</option>
-                        <?php for ($m = 1; $m <= 12; $m++): ?>
-                            <option value="<?= $m ?>" <?= $month==$m?'selected':'' ?>>
-                                <?= date('F', mktime(0, 0, 0, $m, 1)) ?>
-                            </option>
-                        <?php endfor; ?>
-                    </select>
-                    
-                    <span class="filter-label">Year:</span>
-                    <select name="year">
-                        <option value="">All Years</option>
-                        <?php while ($y = $years_result->fetch_assoc()): ?>
-                            <option value="<?= $y['year'] ?>" <?= $year==$y['year']?'selected':'' ?>>
-                                <?= $y['year'] ?>
-                            </option>
-                        <?php endwhile; ?>
-                    </select>
-                </div>
+                    <div class="filter-group">
+                        <label>Status</label>
+                        <select name="status" class="modern-select">
+                            <option value="">All Status</option>
+                            <option value="Open" <?= $status=='Open'?'selected':'' ?>>Open</option>
+                            <option value="Under Investigation" <?= $status=='Under Investigation'?'selected':'' ?>>Under Investigation</option>
+                            <option value="Closed" <?= $status=='Closed'?'selected':'' ?>>Closed</option>
+                        </select>
+                    </div>
 
-                <!-- Action Buttons -->
-                <div class="filter-row">
-                    <button type="submit">🔍 Apply Filters</button>
-                    <a href="cases.php" class="clear-btn">✖ Clear All</a>
+                    <div class="filter-group">
+                        <label>Barangay</label>
+                        <select name="barangay" class="modern-select">
+                            <option value="">All Barangays</option>
+                            <?php 
+                            $barangay_result->data_seek(0);
+                            while ($b = $barangay_result->fetch_assoc()): 
+                            ?>
+                                <option value="<?= $b['id'] ?>" <?= $barangay==$b['id']?'selected':'' ?>>
+                                    <?= $b['official_name'] ?>
+                                </option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label>Date Range (From - To)</label>
+                        <div style="display:flex; gap:5px;">
+                            <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>" class="modern-input">
+                            <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>" class="modern-input">
+                        </div>
+                    </div>
+
+                    <div class="filter-group">
+                        <label>Specific Month / Year</label>
+                        <div style="display:flex; gap:5px;">
+                            <select name="month" class="modern-select">
+                                <option value="">Month</option>
+                                <?php for ($m = 1; $m <= 12; $m++): ?>
+                                    <option value="<?= $m ?>" <?= $month==$m?'selected':'' ?>><?= date('M', mktime(0, 0, 0, $m, 1)) ?></option>
+                                <?php endfor; ?>
+                            </select>
+                            <select name="year" class="modern-select">
+                                <option value="">Year</option>
+                                <?php $years_result->data_seek(0); while ($y = $years_result->fetch_assoc()): ?>
+                                    <option value="<?= $y['year'] ?>" <?= $year==$y['year']?'selected':'' ?>><?= $y['year'] ?></option>
+                                <?php endwhile; ?>
+                            </select>
+                        </div>
+                    </div>
+
                 </div>
             </form>
         </div>
@@ -629,7 +468,7 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
 
                     <div class="action-buttons">
                         <a href="edit_cases.php?id=<?= urlencode($row['case_no']) ?>">Edit Case</a>
-                        <a href="print_blotter.php?id=<?= $row['id'] ?>" target="_blank" class="action-btn print-btn">Print Blotter </a>
+                        <!-- <a href="print_blotter.php?id=<?= $row['id'] ?>" target="_blank" class="action-btn print-btn">Print Blotter </a> -->
                     </div>
                 </td>
             </tr>
@@ -646,9 +485,23 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
         </div>
 
         <button onclick="exportSmartData()" class="export" style="background: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; float: right; font-size: 14px; font-weight: bold;">
-    📊      Export Current Data
+          Export Current Data
         </button>
     </div>
+
+<div id="otpModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:9999; align-items:center; justify-content:center;">
+    <div style="background:white; padding:30px; border-radius:8px; width:350px; text-align:center; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+        <h3 style="color:#003366; margin-top:0;">Security Verification</h3>
+        <p style="font-size:13px; color:#666;">To prevent unauthorized data export, a verification code has been generated.</p>
+        
+        <input type="text" id="otpInput" placeholder="Enter 6-digit Code" maxlength="6" style="width:100%; padding:12px; margin:15px 0; text-align:center; font-size:20px; letter-spacing:5px; border:2px solid #ccc; border-radius:5px;">
+        
+        <div style="display:flex; gap:10px;">
+            <button onclick="closeOtpModal()" style="flex:1; padding:10px; background:#ddd; border:none; border-radius:4px; cursor:pointer;">Cancel</button>
+            <button onclick="verifyAndExport()" style="flex:1; padding:10px; background:#28a745; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">Verify & Export</button>
+        </div>
+    </div>
+</div>
 
 <script>
     function toggleDetails(id) {
@@ -696,7 +549,7 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
                     if (data.print_url) {
                         const printBtnHtml = `<div style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 15px; text-align: right;">
                             <a href="${data.print_url}" target="_blank" style="background: #003366; color: white; padding: 8px 15px; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 13px;">
-                                🖨️ Generate Official Blotter
+                                Generate Official Blotter
                             </a>
                         </div>`;
                         historyDiv.insertAdjacentHTML('beforeend', printBtnHtml);
@@ -759,7 +612,7 @@ function submitNote(event, incidentId) {
         formData.append('log_type', type);
         formData.append('note', note);
 
-        fetch('add_case_note.php', {
+        fetch('add_case_notes.php', {
             method: 'POST',
             body: formData
         })
@@ -785,6 +638,77 @@ function submitNote(event, incidentId) {
             alert('A network error occurred.');
         });
     }
+
+    function toggleAdvancedFilters() {
+        const grid = document.getElementById('advancedFilters');
+        if (grid.style.display === 'none') {
+            grid.style.display = 'grid';
+        } else {
+            grid.style.display = 'none';
+        }
+    }
+
+    // --- SECURE EXPORT LOGIC WITH OTP ---
+let exportParams = "";
+
+function exportSmartData() {
+    // 1. Get current filter values
+    const search = document.querySelector('input[name="search"]').value;
+    const type = document.querySelector('select[name="type"]').value;
+    const barangay = document.querySelector('select[name="barangay"]').value;
+    const status = document.querySelector('select[name="status"]').value;
+    const dateFrom = document.querySelector('input[name="date_from"]').value;
+    const dateTo = document.querySelector('input[name="date_to"]').value;
+    const month = document.querySelector('select[name="month"]').value;
+    const year = document.querySelector('select[name="year"]').value;
+
+    exportParams = new URLSearchParams({
+        search: search, type: type, barangay: barangay, status: status,
+        date_from: dateFrom, date_to: dateTo, month: month, year: year
+    }).toString();
+
+    // 2. Trigger OTP Generation
+    fetch('api_otp.php?action=generate')
+        .then(res => res.json())
+        .then(data => {
+            if(data.success) {
+                // FOR THESIS DEFENSE: We alert the code so you can type it.
+                // In production, this fetch() would trigger an SMS API (like Semaphore).
+                alert("SYSTEM MESSAGE (Simulated SMS):\n\nYour CyberPablo Export Code is: " + data.code);
+                
+                // Show the modal
+                document.getElementById('otpModal').style.display = 'flex';
+                document.getElementById('otpInput').value = '';
+                document.getElementById('otpInput').focus();
+            }
+        });
+}
+
+function closeOtpModal() {
+    document.getElementById('otpModal').style.display = 'none';
+}
+
+function verifyAndExport() {
+    const code = document.getElementById('otpInput').value;
+    
+    // 3. Verify the Code
+    fetch('api_otp.php?action=verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'code=' + code
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.success) {
+            alert("Verification Successful. Downloading data...");
+            closeOtpModal();
+            // 4. Actually download the file
+            window.location.href = 'export_cases.php?' + exportParams;
+        } else {
+            alert("Invalid Code. Export denied.");
+        }
+    });
+}
 </script>
 </body>
 </html>

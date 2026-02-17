@@ -2,11 +2,7 @@
 session_start();
 require_once 'config/connection.php';
 
-// 1. Security Gatekeeper
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header("Location: dashboard.php");
-    exit;
-}
+
 
 // --- PART 1: ANALYTICS DATA FETCHING (Aggregates) ---
 
@@ -62,40 +58,77 @@ for ($i = 0; $i < $count; $i++) {
     for ($j = $i + 1; $j < $count; $j++) {
         $name1 = strtolower(trim($suspects[$i]['accused']));
         $name2 = strtolower(trim($suspects[$j]['accused']));
-        if ($name1 === $name2) continue;
         
+        // 1. Check for Exact Match
+        $is_exact = ($name1 === $name2);
+
+        // 2. Check for Sound/Spelling (only if not exact)
         $sound_match = metaphone($name1) == metaphone($name2);
         $dist = levenshtein($name1, $name2);
         $len = max(strlen($name1), strlen($name2));
         $ratio = ($len > 0) ? (1 - ($dist / $len)) * 100 : 0;
 
-        if ($sound_match || $ratio > 80) {
+        // Condition: Exact Match OR Sound Match OR High Spelling Similarity
+        if ($is_exact || $sound_match || $ratio > 80) {
+            
+            // Determine the label
+            if ($is_exact) {
+                $method_label = "Exact Match";
+            } elseif ($sound_match) {
+                $method_label = "Phonetic Match";
+            } else {
+                $method_label = "Spelling Variation";
+            }
+
             $suspect_links[] = [
                 'name_a' => $suspects[$i]['accused'],
                 'case_a' => $suspects[$i]['case_no'],
                 'name_b' => $suspects[$j]['accused'],
                 'case_b' => $suspects[$j]['case_no'],
-                'method' => $sound_match ? 'Phonetic Match' : 'Spelling Variation'
+                'method' => $method_label
             ];
         }
     }
 }
 
-// Algorithm 2: Modus Clustering
+// Algorithm 2: Modus Clustering (Improved)
 $modus_clusters = [];
 $cases = [];
 $result = $conn->query("SELECT case_no, modus_operandi FROM incidents WHERE modus_operandi IS NOT NULL");
-$stop_words = ['the', 'and', 'is', 'in', 'at', 'of', 'to', 'a', 'was', 'via', 'sent', 'using', 'link', 'specific', 'crime'];
+
+// 1. IMPROVED STOP WORDS: Added common police jargon to ignore
+$stop_words = [
+    'the', 'and', 'is', 'in', 'at', 'of', 'to', 'a', 'was', 'via', 'sent', 
+    'using', 'link', 'specific', 'crime', 'for', 'on', 'with', 'by', 'that', 
+    'it', 'as', 'an', 'or', 'be', 'from',
+    // Domain specific noise (Add these to prevent false alarms):
+    'suspect', 'victim', 'accused', 'complainant', 'reported', 'incident', 
+    'person', 'unknown', 'stated', 'allegedly', 'investigation', 'police', 'barangay'
+];
 
 while ($row = $result->fetch_assoc()) {
+    // Clean: Lowercase -> Remove non-alphanumeric -> Remove extra spaces
     $clean = preg_replace('/[^a-z0-9 ]+/', '', strtolower($row['modus_operandi']));
-    $tokens = array_diff(explode(' ', $clean), $stop_words);
-    $cases[] = ['case_no' => $row['case_no'], 'tokens' => array_unique($tokens)];
+    
+    // Split by space
+    $words = explode(' ', $clean);
+    
+    // Filter: Remove stop words AND empty strings
+    $tokens = array_filter($words, function($w) use ($stop_words) {
+        return !empty($w) && !in_array($w, $stop_words) && strlen($w) > 2;
+    });
+
+    // Store unique meaningful words
+    if (!empty($tokens)) {
+        $cases[] = ['case_no' => $row['case_no'], 'tokens' => array_unique($tokens)];
+    }
 }
 
 for ($i = 0; $i < count($cases); $i++) {
     for ($j = $i + 1; $j < count($cases); $j++) {
         $intersection = array_intersect($cases[$i]['tokens'], $cases[$j]['tokens']);
+        
+        // Threshold: Match if they share 3 or more UNIQUE keywords
         if (count($intersection) >= 3) {
             $modus_clusters[] = [
                 'case_a' => $cases[$i]['case_no'],
@@ -105,31 +138,33 @@ for ($i = 0; $i < count($cases); $i++) {
         }
     }
 }
-
-// Algorithm 3: Serial Victim
+// Serial Victim
 $serial_victims = [];
-$v_sql = "SELECT hashed_victim_id, COUNT(*) as count 
+$v_sql = "SELECT complainant, COUNT(*) as count 
           FROM incidents 
-          WHERE hashed_victim_id IS NOT NULL 
-          AND complainant IS NOT NULL 
+          WHERE complainant IS NOT NULL 
           AND complainant != '' 
           AND complainant != 'Unknown'
-          GROUP BY hashed_victim_id 
+          GROUP BY complainant 
           HAVING count > 1 
           ORDER BY count DESC";
+
 $v_result = $conn->query($v_sql);
+
 while ($row = $v_result->fetch_assoc()) {
-    $id = $row['hashed_victim_id'];
-    $c_sql = "SELECT case_no, complainant FROM incidents WHERE hashed_victim_id = '$id'";
+    $name = $conn->real_escape_string($row['complainant']);
+    
+    // Get the specific case numbers for this person
+    $c_sql = "SELECT case_no FROM incidents WHERE complainant = '$name'";
     $c_res = $conn->query($c_sql);
+    
     $cases_list = [];
-    $victim_name = "Unknown";
     while ($c = $c_res->fetch_assoc()) {
         $cases_list[] = $c['case_no'];
-        if (!empty($c['complainant'])) $victim_name = $c['complainant'];
     }
+
     $serial_victims[] = [
-        'name' => $victim_name,
+        'name' => $row['complainant'],
         'count' => $row['count'],
         'cases' => implode(', ', $cases_list)
     ];
@@ -173,6 +208,43 @@ foreach ($incidents_data as $case) {
         }
     }
 }
+
+// --- PREPARE DATA FOR NETWORK GRAPH ---
+$nodes = [];
+$edges = [];
+$added_nodes = [];
+
+// Helper to add node if not exists
+function addNode(&$nodes, &$added_nodes, $id, $label, $group) {
+    if (!in_array($id, $added_nodes)) {
+        $nodes[] = ['id' => $id, 'label' => $label, 'group' => $group];
+        $added_nodes[] = $id;
+    }
+}
+
+// Process Hard Links (Green)
+foreach ($hard_links as $link) {
+    // Node A (Case 1)
+    addNode($nodes, $added_nodes, $link['case_a'], $link['case_a'], 'case');
+    // Node B (Case 2)
+    addNode($nodes, $added_nodes, $link['case_b'], $link['case_b'], 'case');
+    // The Edge
+    $edges[] = ['from' => $link['case_a'], 'to' => $link['case_b'], 'label' => $link['type'], 'color' => '#28a745'];
+}
+
+// Process Suspect Links (Red)
+foreach ($suspect_links as $link) {
+    // Here we might want to link Person Name to Person Name instead of Case
+    // But let's stick to Case-to-Case for consistency, or mix them.
+    // Let's visualize Suspect Names as nodes here:
+    $id_a = "S_" . md5($link['name_a']);
+    $id_b = "S_" . md5($link['name_b']);
+    
+    addNode($nodes, $added_nodes, $id_a, $link['name_a'], 'suspect');
+    addNode($nodes, $added_nodes, $id_b, $link['name_b'], 'suspect');
+    
+    $edges[] = ['from' => $id_a, 'to' => $id_b, 'label' => 'Alias/Same', 'color' => '#dc3545'];
+}
 ?>
 
 <!DOCTYPE html>
@@ -181,50 +253,37 @@ foreach ($incidents_data as $case) {
     <meta charset="UTF-8">
     <title>Intelligence Analytics - CyberPablo</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="../assets/css/link_analysis.css">
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; margin: 0; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; padding: 30px;}
-        .back-btn { text-decoration: none; color: #003366; font-weight: bold; }
-        
-        /* Grid Layouts */
-        .chart-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 30px; padding: 30px;}
-        .bottom-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; padding: 30px; }
-        
-        /* Cards */
-        .card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-        .card h3 { margin-top: 0; color: #444; font-size: 16px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
-        
-        /* Lists */
-        .alert-list { list-style: none; padding: 0; max-height: 350px; overflow-y: auto; }
-        .alert-item { padding: 12px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
-        
-        .tag { padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
-        .tag.red { background: #ffebee; color: #c62828; }
-        .tag.orange { background: #fff3e0; color: #ef6c00; }
-        .tag.blue { background: #e3f2fd; color: #1565c0; }
+        #network-container { height: 500px; border: 1px solid #ddd; background: white; border-radius: 8px; }
     </style>
 </head>
 <body>
 <?php require_once 'header.php'; ?>
+
 <div class="header">
     <div>
-        <h1 style="color: #003366; margin: 5px 0;">Intelligence & Analytics</h1>
-        <p style="color: #666; margin: 0; font-size: 14px;">Real-time data visualization and relational mapping algorithms.</p>
+        <h1 class="page-title">Intelligence & Analytics</h1>
+        <p class="page-subtitle">Real-time data visualization and relational mapping algorithms.</p>
     </div>
-    <div style="text-align: right;">
-        <span style="font-size: 24px; font-weight: bold; color: #003366;"><?= array_sum($trend_data) ?></span>
-        <div style="font-size: 12px; color: #777;">Cases in Analysis Period</div>
+    <div class="header-stat-box">
+        <span class="stat-number"><?= array_sum($trend_data) ?></span>
+        <div class="stat-label">Cases in Analysis Period</div>
+        <a href="export_intelligence.php" class="btn-export">
+            Export Intelligence Report
+        </a>
     </div>
 </div>
 
 <div class="chart-grid">
     <div class="card">
         <h3>Monthly Crime Trend & Hotspots</h3>
-        <div style="height: 250px; display: flex; gap: 20px;">
-            <div style="flex: 2;">
+        <div class="trend-container">
+            <div class="chart-main">
                 <canvas id="trendChart"></canvas>
             </div>
-            <div style="flex: 1; border-left: 1px solid #eee; padding-left: 20px;">
+            <div class="chart-side">
                 <canvas id="barChart"></canvas>
             </div>
         </div>
@@ -232,75 +291,116 @@ foreach ($incidents_data as $case) {
     
     <div class="card">
         <h3>Crime Distribution</h3>
-        <div style="height: 250px; position: relative;">
+        <div class="pie-container">
             <canvas id="pieChart"></canvas>
         </div>
     </div>
 </div>
 
-<h2 style="color: #003366; font-size: 18px; margin-bottom: 15px; padding: 0 30px;">Automated Link Analysis</h2>
+<div class="card" style="margin-bottom: 30px;">
+    <h3>CRIMINAL NETWORK MAP</h3>
+    <!-- <div id="network-container"></div> -->
+</div>
+
+<h2 class="section-title">Automated Link Analysis</h2>
 <div class="bottom-grid">
     
-    <div class="card" style="border-top: 4px solid #c62828;">
-        <h3 style="color: #c62828;">Repeat Offenders</h3>
+    <div class="card card-border-red">
+        <h3 class="text-red">Repeat Offenders</h3>
         <?php if (empty($suspect_links)): ?>
-            <p style="color: #999; font-style: italic;">No phonetic links detected.</p>
+            <p class="empty-msg">No phonetic links detected.</p>
         <?php else: ?>
             <ul class="alert-list">
                 <?php foreach ($suspect_links as $link): ?>
                 <li class="alert-item">
-                    <span class="tag red">Alias Detected</span><br>
-                    <strong><?= $link['name_a'] ?></strong> ↔ <strong><?= $link['name_b'] ?></strong><br>
-                    <span style="color: #777;">Method: <?= $link['method'] ?></span>
+                    <div class="alert-content">
+                        <span class="tag red">Alias Detected</span>
+                        <div style="margin-top: 5px;">
+                            <strong><?= $link['name_a'] ?></strong> <span class="case-ref">(<?= $link['case_a'] ?>)</span>
+                            <br>
+                            <strong><?= $link['name_b'] ?></strong> <span class="case-ref">(<?= $link['case_b'] ?>)</span>
+                        </div>
+                        <span class="link-method">Method: <?= $link['method'] ?></span>
+                    </div>
+                    <a href="cases.php?search=<?= urlencode($link['case_a']) ?>" class="btn-sm" target="_blank">
+                        Investigate
+                    </a>
                 </li>
                 <?php endforeach; ?>
             </ul>
         <?php endif; ?>
     </div>
 
-    <div class="card" style="border-top: 4px solid #f57f17;">
-        <h3 style="color: #f57f17;">Modus Pattern Clusters</h3>
+    <div class="card card-border-orange">
+        <h3 class="text-orange">Modus Pattern Clusters</h3>
         <?php if (empty($modus_clusters)): ?>
-            <p style="color: #999; font-style: italic;">No common patterns found.</p>
+            <p class="empty-msg">No common patterns found.</p>
         <?php else: ?>
             <ul class="alert-list">
                 <?php foreach ($modus_clusters as $cluster): ?>
                 <li class="alert-item">
-                    <span class="tag orange">Linked Script</span><br>
-                    <?= $cluster['case_a'] ?> ↔ <?= $cluster['case_b'] ?><br>
-                    <span style="color: #555; font-size: 11px;">"<?= $cluster['keywords'] ?>"</span>
+                    <div class="alert-content">
+                        <span class="tag orange">Linked Script</span>
+                        <div style="margin-top: 5px;">
+                            <?= $cluster['case_a'] ?> ↔ <?= $cluster['case_b'] ?>
+                        </div>
+                        <span class="cluster-keywords">"<?= $cluster['keywords'] ?>"</span>
+                    </div>
+                    <?php 
+                        // Pick the first keyword for the search to be safe
+                        $first_keyword = explode(',', $cluster['keywords'])[0]; 
+                    ?>
+                    <a href="cases.php?search=<?= urlencode(trim($first_keyword)) ?>" class="btn-sm" target="_blank">
+                        Find Pattern
+                    </a>
                 </li>
                 <?php endforeach; ?>
             </ul>
         <?php endif; ?>
     </div>
 
-    <div class="card" style="border-top: 4px solid #1565c0;">
-        <h3 style="color: #1565c0;">Recurring Targets</h3>
+    <div class="card card-border-blue">
+        <h3 class="text-blue">Recurring Targets</h3>
         <?php if (empty($serial_victims)): ?>
-            <p style="color: #999; font-style: italic;">No serial victims detected.</p>
+            <p class="empty-msg">No serial victims detected.</p>
         <?php else: ?>
             <ul class="alert-list">
                 <?php foreach ($serial_victims as $victim): ?>
                 <li class="alert-item">
-                    <span class="tag blue">High Risk</span><br>
-                    <strong><?= htmlspecialchars($victim['name']) ?></strong><br>
-                    <?= $victim['count'] ?> incidents reported.
+                    <div class="alert-content">
+                        <span class="tag blue">High Risk</span>
+                        <div style="margin-top: 5px;">
+                            <strong><?= htmlspecialchars($victim['name']) ?></strong>
+                        </div>
+                        <span class="case-ref"><?= $victim['count'] ?> incidents reported.</span>
+                    </div>
+                    <a href="cases.php?search=<?= urlencode($victim['name']) ?>" class="btn-sm" target="_blank">
+                        View History
+                    </a>
                 </li>
                 <?php endforeach; ?>
             </ul>
         <?php endif; ?>
-    </div> <div class="card" style="border-top: 4px solid #2e7d32;">
-        <h3 style="color: #2e7d32;">Hard Evidence Links</h3>
+    </div>
+        
+    <div class="card card-border-green">
+        <h3 class="text-green">Hard Evidence Links</h3>
         <?php if (empty($hard_links)): ?>
-            <p style="color: #999; font-style: italic;">No shared contact info detected.</p>
+            <p class="empty-msg">No shared contact info detected.</p>
         <?php else: ?>
             <ul class="alert-list">
                 <?php foreach ($hard_links as $link): ?>
                 <li class="alert-item">
-                    <span class="tag" style="background: #e8f5e9; color: #2e7d32;">Shared <?= $link['type'] ?></span><br>
-                    <strong><?= htmlspecialchars($link['value']) ?></strong><br>
-                    Linked: <?= $link['case_a'] ?> ↔ <?= $link['case_b'] ?>
+                    <div class="alert-content">
+                        <span class="tag green">Shared <?= $link['type'] ?></span>
+                        <div style="margin-top: 5px;">
+                            <strong><?= htmlspecialchars($link['value']) ?></strong>
+                        </div>
+                        <span class="case-ref">Linked: <?= $link['case_a'] ?> ↔ <?= $link['case_b'] ?></span>
+                    </div>
+                    <a href="cases.php?search=<?= urlencode($link['value']) ?>" class="btn-sm" target="_blank">
+                        Check
+                    </a>
                 </li>
                 <?php endforeach; ?>
             </ul>
@@ -327,7 +427,7 @@ foreach ($incidents_data as $case) {
         options: { responsive: true, maintainAspectRatio: false }
     });
 
-    // 2. Hotspot Bar Chart (Top 5 Barangays)
+    // 2. Hotspot Bar Chart
     new Chart(document.getElementById('barChart'), {
         type: 'bar',
         data: {
@@ -341,7 +441,7 @@ foreach ($incidents_data as $case) {
         options: { 
             responsive: true, 
             maintainAspectRatio: false,
-            indexAxis: 'y', // Horizontal Bar
+            indexAxis: 'y', 
             plugins: { legend: { display: false } }
         }
     });
@@ -353,9 +453,7 @@ foreach ($incidents_data as $case) {
             labels: <?= json_encode($type_labels) ?>,
             datasets: [{
                 data: <?= json_encode($type_data) ?>,
-                backgroundColor: [
-                    '#f44336', '#9c27b0', '#3f51b5', '#009688', '#ff9800', '#795548'
-                ]
+                backgroundColor: ['#f44336', '#9c27b0', '#3f51b5', '#009688', '#ff9800', '#795548']
             }]
         },
         options: { 
@@ -364,9 +462,21 @@ foreach ($incidents_data as $case) {
             plugins: { 
                 legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } } 
             } 
-        }
+        } 
     });
-</script>
 
+    var nodes = new vis.DataSet(<?= json_encode($nodes) ?>);
+    var edges = new vis.DataSet(<?= json_encode($edges) ?>);
+    var container = document.getElementById('network-container');
+    var data = { nodes: nodes, edges: edges };
+    var options = {
+        groups: {
+            case: {shape: 'box', color: '#003366', font: {color:'white'}},
+            suspect: {shape: 'ellipse', color: '#dc3545', font: {color:'white'}}
+        },
+        physics: { stabilization: false }
+    };
+    var network = new vis.Network(container, data, options);
+</script>
 </body>
 </html>

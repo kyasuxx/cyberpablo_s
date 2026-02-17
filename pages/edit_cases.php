@@ -246,295 +246,25 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Edit Case <?= htmlspecialchars($case_id) ?> - CyberPablo</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            background: #f0f2f5;
-        }
-        
-        .header {
-            background: linear-gradient(135deg, #003366 0%, #004d99 100%);
-            color: white;
-            padding: 20px 40px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-        }
-        
-        .header h1 {
-            font-size: 24px;
-            margin-bottom: 10px;
-        }
-        
-        .breadcrumb {
-            font-size: 14px;
-            color: #ffcc00;
-        }
-        
-        .breadcrumb a {
-            color: #ffcc00;
-            text-decoration: none;
-        }
-        
-        .breadcrumb a:hover { text-decoration: underline; }
-        
-        .container {
-            max-width: 1400px;
-            margin: 30px auto;
-            padding: 0 20px;
-            display: grid;
-            grid-template-columns: 1fr 350px;
-            gap: 20px;
-        }
-        
-        .main-content { display: flex; flex-direction: column; gap: 20px; }
-        .sidebar { display: flex; flex-direction: column; gap: 20px; }
-        
-        .card {
-            background: white;
-            border-radius: 12px;
-            padding: 25px;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-        }
-        
-        .card h2 {
-            color: #003366;
-            margin-bottom: 20px;
-            font-size: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .alert {
-            padding: 15px 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-        
-        .alert-success {
-            background: #d4edda;
-            color: #155724;
-            border-left: 4px solid #28a745;
-        }
-        
-        .alert-error {
-            background: #f8d7da;
-            color: #721c24;
-            border-left: 4px solid #dc3545;
-        }
-        
-        .form-row {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-        
-        .form-row.full { grid-template-columns: 1fr; }
-        
-        .form-group {
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .form-group label {
-            color: #333;
-            font-weight: 600;
-            margin-bottom: 8px;
-            font-size: 14px;
-        }
-        
-        .form-group input,
-        .form-group select,
-        .form-group textarea {
-            padding: 10px 14px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-size: 14px;
-            transition: all 0.3s;
-        }
-        
-        .form-group input:focus,
-        .form-group select:focus,
-        .form-group textarea:focus {
-            outline: none;
-            border-color: #003366;
-            box-shadow: 0 0 0 3px rgba(0,51,102,0.1);
-        }
-        
-        .form-group textarea {
-            resize: vertical;
-            min-height: 80px;
-        }
-        
-        .required::after {
-            content: " *";
-            color: #d32f2f;
-        }
-        
-        #map {
-            height: 300px;
-            border-radius: 8px;
-            margin-top: 10px;
-        }
-        
-        .btn {
-            padding: 12px 30px;
-            border: none;
-            border-radius: 8px;
-            font-size: 15px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        
-        .btn-primary {
-            background: #003366;
-            color: white;
-        }
-        
-        .btn-primary:hover {
-            background: #004d99;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,51,102,0.3);
-        }
-        
-        .btn-secondary {
-            background: #6c757d;
-            color: white;
-        }
-        
-        .btn-danger {
-            background: #d32f2f;
-            color: white;
-        }
-        
-        .button-group {
-            display: flex;
-            gap: 15px;
-            margin-top: 30px;
-        }
-        
-        .status-badge {
-            display: inline-block;
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        
-        .status-open { background: #ffebee; color: #c62828; }
-        .status-under-investigation { background: #fff3e0; color: #e65100; }
-        .status-closed { background: #e8f5e9; color: #2e7d32; }
-        
-        .history-item {
-            padding: 12px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            margin-bottom: 10px;
-            border-left: 3px solid #003366;
-        }
-        
-        .history-date {
-            font-size: 12px;
-            color: #666;
-            margin-top: 5px;
-        }
-        
-        .attachment-list {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        
-        .attachment-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px;
-            background: #f8f9fa;
-            border-radius: 6px;
-        }
-        
-        .attachment-item a {
-            color: #003366;
-            text-decoration: none;
-            font-size: 14px;
-        }
-        
-        .file-upload-area {
-            border: 2px dashed #ccc;
-            border-radius: 8px;
-            padding: 20px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        
-        .file-upload-area:hover {
-            border-color: #003366;
-            background: #f0f8ff;
-        }
-        
-        #barangay-suggestions {
-            position: absolute;
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            max-height: 200px;
-            overflow-y: auto;
-            width: calc(100% - 4px);
-            z-index: 1000;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            display: none;
-        }
-        
-        .suggestion-item {
-            padding: 10px 15px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-        
-        .suggestion-item:hover {
-            background: #f0f8ff;
-        }
-        
-        .suggestion-alt {
-            font-size: 12px;
-            color: #666;
-        }
-        
-        @media (max-width: 1024px) {
-            .container {
-                grid-template-columns: 1fr;
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="../assets/css/edit_cases.css">
 </head>
 <body>
-    <div class="header">
-        <h1>🔐 Edit Case: <?= htmlspecialchars($case_id) ?></h1>
-        <div class="breadcrumb">
-            <a href="dashboard.php">Dashboard</a> → 
-            <a href="cases.php">Cases</a> → 
-            <span>Edit</span>
-        </div>
-    </div>
+    <?php require_once 'header.php'; ?>
 
     <div class="container">
         <div class="main-content">
             <?php if ($success_msg): ?>
-                <div class="alert alert-success">✅ <?= $success_msg ?></div>
+                <div class="alert alert-success"><?= $success_msg ?></div>
             <?php endif; ?>
             
             <?php if ($error_msg): ?>
-                <div class="alert alert-error">❌ <?= $error_msg ?></div>
+                <div class="alert alert-error"><?= $error_msg ?></div>
             <?php endif; ?>
 
             <form method="POST" enctype="multipart/form-data">
                 <!-- Basic Information -->
                 <div class="card">
-                    <h2>📋 Basic Information</h2>
+                    <h2>Basic Information</h2>
                     
                     <div class="form-row">
                         <div class="form-group">
@@ -579,7 +309,7 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
 
                 <!-- Location -->
                 <div class="card">
-                    <h2>📍 Location</h2>
+                    <h2>Location</h2>
                     <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
                         Click on the map to set precise coordinates
                     </p>
@@ -703,7 +433,7 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
 
                 <!-- Prosecutor Assignment -->
                 <div class="card">
-                    <h2>👨‍⚖️ Prosecutor Assignment</h2>
+                    <h2>Prosecutor Assignment</h2>
                     
                     <div class="form-row">
                         <div class="form-group">
@@ -730,7 +460,7 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
 
                 <!-- Processing Details -->
                 <div class="card">
-                    <h2>📄 Processing Details</h2>
+                    <h2>Processing Details</h2>
                     
                     <div class="form-row">
                         <div class="form-group">
@@ -761,7 +491,7 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
 
                 <!-- File Attachments -->
                 <div class="card">
-                    <h2>📎 File Attachments</h2>
+                    <h2>File Attachments</h2>
                     
                     <?php if ($attachments_result->num_rows > 0): ?>
                         <div class="attachment-list" style="margin-bottom: 20px;">
@@ -769,7 +499,7 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
                             <?php while ($a = $attachments_result->fetch_assoc()): ?>
                                 <div class="attachment-item">
                                     <a href="<?= htmlspecialchars($a['file_path']) ?>" target="_blank">
-                                        📄 <?= htmlspecialchars($a['file_name']) ?>
+                                        <?= htmlspecialchars($a['file_name']) ?>
                                     </a>
                                     <span style="font-size: 12px; color: #999;">
                                         (Uploaded <?= date('M d, Y', strtotime($a['uploaded_at'])) ?>)
@@ -780,7 +510,7 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
                     <?php endif; ?>
 
                     <div class="file-upload-area" onclick="document.getElementById('fileInput').click()">
-                        <p>📁 Click to upload new attachments (PDF, JPG, PNG)</p>
+                        <p>Click to upload new attachments (PDF, JPG, PNG)</p>
                         <p style="font-size: 12px; color: #999; margin-top: 5px;">Max 5MB per file</p>
                     </div>
                     <input type="file" name="attachments[]" id="fileInput" multiple accept=".pdf,.jpg,.jpeg,.png" style="display: none;">
@@ -788,10 +518,10 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
 
                 <div class="button-group">
                     <button type="submit" name="update_case" class="btn btn-primary">
-                        💾 Save Changes
+                        Save Changes
                     </button>
                     <button type="button" class="btn btn-secondary" onclick="history.back()">
-                        ❌ Cancel
+                        Cancel
                     </button>
                 </div>
             </form>
@@ -800,7 +530,7 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
         <div class="sidebar">
             <!-- Status History -->
             <div class="card">
-                <h2>📊 Status History</h2>
+                <h2>Status History</h2>
                 <?php if ($status_history->num_rows > 0): ?>
                     <?php while ($h = $status_history->fetch_assoc()): ?>
                         <div class="history-item">
@@ -821,7 +551,7 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
 
             <!-- Quick Info -->
             <div class="card">
-                <h2>ℹ️ Case Info</h2>
+                <h2>Case Info</h2>
                 <div style="display: flex; flex-direction: column; gap: 12px;">
                     <div>
                         <strong style="color: #666; font-size: 12px;">Current Status</strong>

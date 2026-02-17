@@ -10,6 +10,8 @@ $username = $_SESSION['username'] ?? 'Officer';
 $role = $_SESSION['role'] ?? 'user';
 ?>
 
+<?php if ($role === 'admin') { include 'admin_sidebar.php'; } ?>
+
 <style>
     /* UNIVERSAL HEADER STYLES */
     .app-header {
@@ -40,6 +42,23 @@ $role = $_SESSION['role'] ?? 'user';
     .brand-logo {
         height: 40px;
         width: auto;
+        border-radius: 50px;
+    }
+
+    /* Burger Menu Icon inside Brand */
+    .burger-btn {
+        background: none;
+        border: none;
+        color: white;
+        font-size: 24px;
+        cursor: pointer;
+        padding: 5px;
+        margin-right: 5px;
+        transition: color 0.3s;
+    }
+    
+    .burger-btn:hover {
+        color: #d94c23; /* Hover orange */
     }
 
     /* Middle: Navigation */
@@ -113,15 +132,15 @@ $role = $_SESSION['role'] ?? 'user';
     .logout-btn:hover {
         background-color: #b71c1c;
     }
-
-    .brand img{
-        border-radius: 50px;
-    }
 </style>
 
 <header class="app-header">
-   <div class="brand">
-        <img src="../assets/images/logo.png" alt="Logo" style="height: 40px; width: auto; margin-right: 10px;">
+    <div class="brand">
+        <?php if ($role === 'admin'): ?>
+            <button class="burger-btn" onclick="openAdminSidebar()">&#9776;</button>
+        <?php endif; ?>
+
+        <img src="../assets/images/logo.png" alt="Logo" class="brand-logo">
         CYBERPABLO
     </div>
 
@@ -131,9 +150,6 @@ $role = $_SESSION['role'] ?? 'user';
         </a>
         <a href="cases.php" class="nav-item <?= $current_page == 'cases.php' ? 'active' : '' ?>">
             Cases
-        </a>
-        <a href="link_analysis.php" class="nav-item <?= $current_page == 'link_analysis.php' ? 'active' : '' ?>">
-            Intelligence
         </a>
         
         <?php if ($role === 'admin'): ?>

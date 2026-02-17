@@ -2,132 +2,248 @@
 session_start();
 require_once 'config/connection.php';
 
-// 1. Security Gatekeeper: Strict Admin Check
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header("Location: dashboard.php");
-    exit;
+// --- PART 1: ANALYTICS DATA FETCHING (Aggregates) ---
+
+// A. Monthly Trend
+$trend_labels = [];
+$trend_data = [];
+$month_sql = "SELECT DATE_FORMAT(incident_date, '%M') as month_name, COUNT(*) as count 
+              FROM incidents 
+              WHERE incident_date IS NOT NULL
+              GROUP BY DATE_FORMAT(incident_date, '%Y-%m')
+              ORDER BY incident_date ASC";
+$m_result = $conn->query($month_sql);
+while($row = $m_result->fetch_assoc()) {
+    $trend_labels[] = $row['month_name'];
+    $trend_data[] = $row['count'];
 }
 
-$username = $_SESSION['username'];
+// B. Top Hotspots
+$brgy_labels = [];
+$brgy_data = [];
+$b_sql = "SELECT official_name, COUNT(*) as count 
+          FROM incidents 
+          JOIN barangays ON incidents.barangay_id = barangays.id 
+          GROUP BY barangay_id 
+          ORDER BY count DESC LIMIT 5";
+$b_result = $conn->query($b_sql);
+while($row = $b_result->fetch_assoc()) {
+    $brgy_labels[] = $row['official_name'];
+    $brgy_data[] = $row['count'];
+}
+
+// C. Crime Distribution
+$type_labels = [];
+$type_data = [];
+$t_sql = "SELECT incident_type, COUNT(*) as count FROM incidents GROUP BY incident_type";
+$t_result = $conn->query($t_sql);
+while($row = $t_result->fetch_assoc()) {
+    $type_labels[] = $row['incident_type'];
+    $type_data[] = $row['count'];
+}
+
+// --- PART 2: LINK ANALYSIS (Multi-Factor Engine) ---
+
+$cases = [];
+$stop_words = ['the', 'and', 'is', 'in', 'at', 'of', 'to', 'a', 'was', 'via', 'sent', 'using', 'link', 'specific', 'crime', 'for', 'on', 'with', 'by', 'that', 'it', 'as', 'an', 'or', 'be', 'from', 'suspect', 'victim', 'accused', 'complainant', 'reported', 'incident', 'person', 'unknown', 'stated', 'allegedly', 'investigation', 'police', 'barangay'];
+
+$result = $conn->query("SELECT case_no, accused, accused_contact, modus_operandi FROM incidents");
+while ($row = $result->fetch_assoc()) {
+    // Clean Modus
+    $clean_modus = preg_replace('/[^a-z0-9 ]+/', '', strtolower($row['modus_operandi']));
+    $words = explode(' ', $clean_modus);
+    $tokens = array_filter($words, function($w) use ($stop_words) {
+        return !empty($w) && !in_array($w, $stop_words) && strlen($w) > 3;
+    });
+    $row['tokens'] = array_unique($tokens);
+    
+    // Clean phone
+    $row['clean_phone'] = preg_replace('/[^0-9]/', '', $row['accused_contact']);
+    
+    $cases[] = $row;
+}
+
+$syndicate_links = [];
+$count = count($cases);
+
+for ($i = 0; $i < $count; $i++) {
+    for ($j = $i + 1; $j < $count; $j++) {
+        $c1 = $cases[$i];
+        $c2 = $cases[$j];
+        
+        $score = 0;
+        $reasons = [];
+
+        // 1. Check Phone (50 pts)
+        if (!empty($c1['clean_phone']) && !empty($c2['clean_phone']) && strlen($c1['clean_phone']) >= 7) {
+            if ($c1['clean_phone'] === $c2['clean_phone']) {
+                $score += 50;
+                $reasons[] = "Shared Phone Number (" . $c1['accused_contact'] . ")";
+            }
+        }
+
+        // 2. Check Suspect Name (Exact = 50 pts, Similar = 30 pts)
+        if (!empty($c1['accused']) && !empty($c2['accused']) && strtolower($c1['accused']) !== 'unknown' && strtolower($c2['accused']) !== 'unknown') {
+            $name1 = strtolower(trim($c1['accused']));
+            $name2 = strtolower(trim($c2['accused']));
+            
+            if ($name1 === $name2) {
+                $score += 50;
+                $reasons[] = "Exact Suspect Match (" . $c1['accused'] . ")";
+            } else {
+                $sound_match = metaphone($name1) == metaphone($name2);
+                $dist = levenshtein($name1, $name2);
+                if ($sound_match || ($dist <= 2 && strlen($name1) > 5)) {
+                    $score += 30;
+                    $reasons[] = "Phonetic Alias Detected (" . $c1['accused'] . " / " . $c2['accused'] . ")";
+                }
+            }
+        }
+
+        // 3. Check Modus (20 pts)
+        $intersection = array_intersect($c1['tokens'], $c2['tokens']);
+        if (count($intersection) >= 3) {
+            $score += 20;
+            $reasons[] = "Similar Modus (" . implode(', ', array_slice($intersection, 0, 3)) . "...)";
+        }
+
+        // Threshold = 50. This stops dummy data from repeating!
+        // To link, they MUST have a shared phone, an exact name, OR a similar name + similar modus.
+        if ($score >= 50) {
+            $syndicate_links[] = [
+                'case_a' => $c1['case_no'],
+                'case_b' => $c2['case_no'],
+                'reasons' => $reasons
+            ];
+        }
+    }
+}
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Admin Panel - CyberPablo</title>
+    <title>Intelligence Analytics - CyberPablo</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="../assets/css/link_analysis.css">
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; margin: 0; }
-        
-        .header {
-            background: linear-gradient(135deg, #1a237e 0%, #283593 100%); /* distinct Dark Blue for Admin */
-            color: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        .link-card { 
+            background: white; 
+            border-radius: 8px; 
+            padding: 20px; 
+            margin-bottom: 15px; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05); 
+            border-left: 5px solid #003366; 
         }
-        
-        .nav-links a { color: #fff; text-decoration: none; margin-left: 20px; font-weight: 500; opacity: 0.9; }
-        .nav-links a:hover { opacity: 1; text-decoration: underline; }
-        
-        .container { max-width: 1000px; margin: 40px auto; padding: 0 20px; }
-        
-        .welcome-banner {
-            background: white; padding: 25px; border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 30px;
-            border-left: 5px solid #1a237e;
+        .reason-tag { 
+            display: inline-block; 
+            background: #e9ecef; 
+            color: #333; 
+            padding: 5px 10px; 
+            border-radius: 4px; 
+            font-size: 12px; 
+            margin-right: 8px; 
+            margin-top: 8px; 
         }
-        
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 25px; }
-        
-        .card {
-            background: white; padding: 25px; border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05); transition: transform 0.2s;
-            border-top: 4px solid transparent;
-            display: flex; flex-direction: column; justify-content: space-between;
-        }
-        
-        .card:hover { transform: translateY(-5px); }
-        .card h3 { margin-top: 0; color: #1a237e; }
-        .card p { color: #666; font-size: 14px; line-height: 1.5; margin-bottom: 20px; }
-        
-        .btn {
-            display: inline-block; padding: 10px 15px; border-radius: 6px;
-            text-decoration: none; font-weight: bold; text-align: center;
-            transition: background 0.3s;
-        }
-        
-        /* Card Specific Colors */
-        .card.add { border-top-color: #2e7d32; }
-        .card.add .btn { background: #2e7d32; color: white; }
-        .card.add .btn:hover { background: #1b5e20; }
-        
-        .card.import { border-top-color: #f57f17; }
-        .card.import .btn { background: #f57f17; color: white; }
-        .card.import .btn:hover { background: #e65100; }
-        
-        .card.users { border-top-color: #1565c0; }
-        .card.users .btn { background: #1565c0; color: white; }
-        .card.users .btn:hover { background: #0d47a1; }
     </style>
 </head>
 <body>
-
 <?php require_once 'header.php'; ?>
 
-<!-- <div class="header">
-    <div style="font-size: 20px; font-weight: bold;">CyberPablo <span style="font-weight: 300; opacity: 0.8;">| Admin Command</span></div>
-    <div class="nav-links">
-        <a href="dashboard.php">View Map</a>
-        <a href="cases.php">View Cases</a>
-        <a href="logout.php">Logout</a>
+<div class="header">
+    <div>
+        <h1 class="page-title">Intelligence Analytics</h1>
+        <p class="page-subtitle">Multi-Factor Entity Resolution</p>
     </div>
-</div> -->
-
-<div class="container">
-    <div class="welcome-banner">
-        <h2>Welcome back, Admin <?= htmlspecialchars($username) ?>.</h2>
-        <p>Manage system data, user access, and bulk operations from this central panel.</p>
+    <div class="header-stat-box">
+        <span class="stat-number"><?= count($syndicate_links) ?></span>
+        <div class="stat-label">Connections Found</div>
+        <a href="export_intelligence.php" class="btn-export">Export Report</a>
     </div>
+</div>
 
-    <div class="grid">
-        <div class="card add">
-            <div>
-                <h3>New Case Entry</h3>
-                <p>Manually encode a new cybercrime incident report. Includes standardized categorization (Phase 2).</p>
-            </div>
-            <a href="add_cases.php" class="btn">Open Intake Form</a>
+<div class="chart-grid">
+    <div class="card">
+        <h3>Monthly Crime Trend</h3>
+        <div class="trend-container" style="height: 300px;">
+            <canvas id="trendChart"></canvas>
         </div>
-
-        <div class="card import">
-            <div>
-                <h3>Batch Import</h3>
-                <p>Upload Excel (.xlsx) files to bulk update the database. <br><em>Features orphaned file heuristic linkage.</em></p>
-            </div>
-            <a href="import_cases.php" class="btn">Go to Import Tool</a>
-        </div>
-
-        <div class="card users">
-            <div>
-                <h3>User Management</h3>
-                <p>Register new investigators, reset passwords, or deactivate accounts.</p>
-            </div>
-            <a href="users.php" class="btn">Manage Accounts</a>
-        </div>
-        <div class="card analysis" style="border-top-color: #9c27b0;">
-            <div>
-                <h3 style="color: #9c27b0;">Link Analysis</h3>
-                <p><strong>AI-driven Logic:</strong> Detects phonetic aliases, modus operandi clusters, and serial victims.</p>
-            </div>
-            <a href="link_analysis.php" class="btn" style="background: #9c27b0; color: white;">Run Intelligence Scan</a>
-        </div>
-        <div class="card security" style="border-top-color: #333;">
-            <div>
-                <h3 style="color: #333;">System Audit Logs</h3>
-                <p><strong>Security Compliance:</strong> Review login history, data exports, and system access logs.</p>
-            </div>
-            <a href="admin_audit_log.php" class="btn" style="background: #333; color: white;">View Security Logs</a>
+    </div>
+    
+    <div class="card">
+        <h3>Crime Distribution</h3>
+        <div class="pie-container" style="height: 300px;">
+            <canvas id="pieChart"></canvas>
         </div>
     </div>
 </div>
 
+<h2 class="section-title">Case Connections Detected</h2>
+<p style="margin-bottom: 20px; color: #555;">The system has analyzed the database to find overlapping identifiers, suggesting linked criminal activity.</p>
+
+<div style="display: grid; grid-template-columns: 1fr; gap: 15px; margin-bottom: 40px;">
+    
+    <?php if (empty($syndicate_links)): ?>
+        <div class="card"><p class="empty-msg" style="color: #666; padding: 20px;">No connections detected in the current dataset.</p></div>
+    <?php else: ?>
+        <?php foreach (array_slice($syndicate_links, 0, 30) as $link): ?>
+        <div class="link-card">
+            <h3 style="margin-top: 0; margin-bottom: 5px; color: #003366;">
+                Case <?= $link['case_a'] ?> &mdash; Case <?= $link['case_b'] ?>
+            </h3>
+            
+            <div>
+                <strong style="font-size: 11px; color: #999; text-transform: uppercase;">Points of Intersection:</strong><br>
+                <?php foreach ($link['reasons'] as $reason): ?>
+                    <span class="reason-tag"><?= htmlspecialchars($reason) ?></span>
+                <?php endforeach; ?>
+            </div>
+
+            <div style="margin-top: 15px; text-align: right;">
+                <a href="cases.php?search=<?= urlencode($link['case_a']) ?>" class="btn-sm" style="background: #003366; color: white; padding: 6px 12px; text-decoration: none; border-radius: 4px; font-size: 12px; display: inline-block;">Review Case A</a>
+                <a href="cases.php?search=<?= urlencode($link['case_b']) ?>" class="btn-sm" style="background: #003366; color: white; padding: 6px 12px; text-decoration: none; border-radius: 4px; font-size: 12px; display: inline-block; margin-left: 5px;">Review Case B</a>
+            </div>
+        </div>
+        <?php endforeach; ?>
+    <?php endif; ?>
+
+</div>
+
+<script>
+    // 1. Trend Chart
+    new Chart(document.getElementById('trendChart'), {
+        type: 'line',
+        data: {
+            labels: <?= json_encode($trend_labels) ?>,
+            datasets: [{
+                label: 'New Cases',
+                data: <?= json_encode($trend_data) ?>,
+                borderColor: '#003366', 
+                tension: 0.3, 
+                fill: true, 
+                backgroundColor: 'rgba(0, 51, 102, 0.1)'
+            }]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+    });
+
+    // 2. Crime Type Pie Chart
+    new Chart(document.getElementById('pieChart'), {
+        type: 'doughnut',
+        data: {
+            labels: <?= json_encode($type_labels) ?>,
+            datasets: [{
+                data: <?= json_encode($type_data) ?>,
+                backgroundColor: ['#f44336', '#9c27b0', '#3f51b5', '#009688', '#ff9800', '#795548']
+            }]
+        },
+        options: { 
+            responsive: true, 
+            maintainAspectRatio: false, 
+            plugins: { legend: { position: 'right' } } 
+        } 
+    });
+</script>
 </body>
 </html>

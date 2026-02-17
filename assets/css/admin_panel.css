@@ -1,0 +1,146 @@
+/* General Layout */
+body { 
+    font-family: 'Segoe UI', sans-serif; 
+    background: #f0f2f5; 
+    margin: 0; 
+}
+
+/* Header Branding */
+.header {
+    background: linear-gradient(135deg, #1a237e 0%, #283593 100%); 
+    color: white; 
+    padding: 15px 30px; 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.nav-links a { 
+    color: #fff; 
+    text-decoration: none; 
+    margin-left: 20px; 
+    font-weight: 500; 
+    opacity: 0.9; 
+}
+.nav-links a:hover { 
+    opacity: 1; 
+    text-decoration: underline; 
+}
+
+/* Main Content Area */
+.container { 
+    max-width: 1000px; 
+    margin: 40px auto; 
+    padding: 0 20px; 
+}
+
+.welcome-banner {
+    background: white; 
+    padding: 25px; 
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05); 
+    margin-bottom: 30px;
+    border-left: 5px solid #1a237e;
+}
+
+/* Dashboard Grid & Cards */
+.grid { 
+    display: grid; 
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); 
+    gap: 25px; }
+
+.card {
+    background: white; 
+    padding: 25px; 
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.05); 
+    transition: transform 0.2s;
+    border-top: 4px solid transparent;
+    display: flex; 
+    flex-direction: column; 
+    justify-content: space-between;
+}
+
+.card:hover { 
+    transform: translateY(-5px); 
+}
+.card h3 { 
+    margin-top: 0; color: #1a237e; 
+}
+.card p { 
+    color: #666; 
+    font-size: 14px; 
+    line-height: 1.5; 
+    margin-bottom: 20px; 
+}
+
+.btn {
+    display: inline-block; 
+    padding: 10px 15px; 
+    border-radius: 6px;
+    text-decoration: none; 
+    font-weight: bold; 
+    text-align: center;
+    transition: background 0.3s;
+}
+
+/* Dynamic Card Colors */
+.card.add { 
+    border-top-color: #2e7d32; 
+}
+.card.add .btn { 
+    background: #2e7d32; 
+    color: white; 
+}
+.card.add .btn:hover { 
+    background: #1b5e20; 
+}
+
+.card.import { 
+    border-top-color: #f57f17; 
+}
+.card.import .btn { 
+    background: #f57f17; 
+    color: white; 
+}
+.card.import .btn:hover { 
+    background: #e65100; 
+}
+
+.card.users { 
+    border-top-color: #1565c0; 
+}
+.card.users .btn { 
+    background: #1565c0; 
+    color: white; }
+.card.users .btn:hover { 
+    background: #0d47a1; 
+}
+
+.card.analysis { 
+    border-top-color: #9c27b0; 
+}
+.card.analysis h3 { 
+    color: #9c27b0; 
+}
+.card.analysis .btn { 
+    background: #9c27b0; 
+    color: white; 
+}
+.card.analysis .btn:hover { 
+    background: #7b1fa2; 
+}
+
+.card.security { 
+    border-top-color: #333; }
+.card.security h3 { 
+    color: #333; 
+}
+.card.security .btn { 
+    background: #333; 
+    color: white; 
+}
+.card.security .btn:hover { 
+    background: #000; 
+}

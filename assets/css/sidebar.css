@@ -1,0 +1,110 @@
+ /* Sidebar Container */
+    .admin-sidebar {
+        height: 100vh;
+        width: 0; /* Hidden by default */
+        position: fixed;
+        z-index: 10000; /* Ensure it stays above everything */
+        top: 0;
+        left: 0;
+        background-color: #003366;
+        overflow-x: hidden;
+        transition: width 0.3s ease;
+        box-shadow: 4px 0 15px rgba(0,0,0,0.3);
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* Sidebar Content Wrapper (keeps width constant even when sliding) */
+    .sidebar-inner {
+        width: 300px;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+    }
+
+    .sidebar-header {
+        padding: 20px;
+        background-color: #002244;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: white;
+    }
+
+    .sidebar-header h2 {
+        margin: 0;
+        font-size: 18px;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        color: white;
+        font-size: 24px;
+        cursor: pointer;
+    }
+
+    .close-btn:hover {
+        color: #ff4d4d;
+    }
+
+    /* Sidebar Navigation Links */
+    .sidebar-menu {
+        list-style: none;
+        padding: 0;
+        margin: 10px 0;
+        flex-grow: 1;
+        overflow-y: auto;
+    }
+
+    .sidebar-menu a {
+        display: flex;
+        align-items: center;
+        gap: 1rem; 
+        padding: 20px 20px;
+        text-decoration: none;
+        color: white;
+    }
+
+    .sidebar-menu span.menu-title {
+        display: flex;
+        align-items: center;
+        gap: 1rem; 
+        width: 100%;
+    }
+
+    .sidebar-menu span.menu-title i {
+        width: 20px;         
+        text-align: center;      
+    }
+
+    .sidebar-menu a:hover, .sidebar-menu a.active {
+        background-color: rgba(255,255,255,0.1);
+        color: white;
+        border-left: 4px solid #6610f2;
+    }
+
+    .menu-title {
+        font-weight: bold;
+        display: block;
+        margin-bottom: 5px;
+    }
+
+    .menu-desc {
+        display: block;
+        font-size: 11px;
+        color: #aaa;
+        line-height: 1.4;
+    }
+
+    /* Overlay for background dimming */
+    .sidebar-overlay {
+        position: fixed;
+        display: none;
+        width: 100%;
+        height: 100%;
+        top: 0;
+        left: 0;
+        background-color: rgba(0,0,0,0.5);
+        z-index: 9998;
+    }

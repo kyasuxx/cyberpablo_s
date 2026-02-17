@@ -512,193 +512,7 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
 <head>
     <meta charset="UTF-8">
     <title>Import Excel - CyberPablo</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; }
-        
-        .header {
-            background: linear-gradient(135deg, #003366 0%, #004d99 100%);
-            color: white;
-            padding: 20px 40px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        
-        .header h1 { font-size: 28px; font-weight: 600; }
-        
-        .nav {
-            margin-top: 10px;
-            display: flex;
-            gap: 20px;
-        }
-        
-        .nav a {
-            color: #ffcc00;
-            text-decoration: none;
-            font-weight: 500;
-            transition: color 0.3s;
-        }
-        
-        .nav a:hover { color: #ffd700; }
-        
-        .container {
-            max-width: 1200px;
-            margin: 40px auto;
-            padding: 0 20px;
-        }
-        
-        .card {
-            background: white;
-            border-radius: 12px;
-            padding: 30px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            margin-bottom: 30px;
-        }
-        
-        .card h2 {
-            color: #003366;
-            margin-bottom: 20px;
-            font-size: 24px;
-        }
-        
-        .alert {
-            padding: 15px 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .alert-success {
-            background: #d4edda;
-            color: #155724;
-            border-left: 4px solid #28a745;
-        }
-        
-        .alert-error {
-            background: #f8d7da;
-            color: #721c24;
-            border-left: 4px solid #dc3545;
-        }
-        
-        .alert-warning {
-            background: #fff3cd;
-            color: #856404;
-            border-left: 4px solid #ffc107;
-        }
-        
-        .upload-area {
-            border: 3px dashed #ccc;
-            border-radius: 12px;
-            padding: 60px;
-            text-align: center;
-            background: #fafafa;
-            transition: all 0.3s;
-            cursor: pointer;
-        }
-        
-        .upload-area:hover {
-            border-color: #003366;
-            background: #f0f8ff;
-        }
-        
-        .upload-area.dragover {
-            border-color: #28a745;
-            background: #e8f5e9;
-        }
-        
-        .upload-icon {
-            font-size: 48px;
-            margin-bottom: 15px;
-        }
-        
-        input[type="file"] { display: none; }
-        
-        .btn {
-            padding: 12px 30px;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        
-        .btn-primary {
-            background: #003366;
-            color: white;
-        }
-        
-        .btn-primary:hover {
-            background: #004d99;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,51,102,0.3);
-        }
-        
-        .btn-success {
-            background: #28a745;
-            color: white;
-        }
-        
-        .btn-success:hover {
-            background: #218838;
-        }
-        
-        .btn-secondary {
-            background: #6c757d;
-            color: white;
-        }
-        
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-        
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #e0e0e0;
-        }
-        
-        th {
-            background: #f8f9fa;
-            font-weight: 600;
-            color: #003366;
-        }
-        
-        tr:hover {
-            background: #f8f9fa;
-        }
-        
-        .error-list {
-            background: #fff3cd;
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 15px;
-        }
-        
-        .error-list li {
-            color: #856404;
-            margin: 5px 0;
-        }
-        
-        .template-download {
-            display: inline-block;
-            margin-top: 15px;
-            padding: 10px 20px;
-            background: #28a745;
-            color: white;
-            text-decoration: none;
-            border-radius: 6px;
-            transition: all 0.3s;
-        }
-        
-        .template-download:hover {
-            background: #218838;
-            transform: translateY(-2px);
-        }
-    </style>
+    <link rel="stylesheet" href="../assets/css/import_cases.css">
 </head>
 <body>
    <?php require_once 'header.php'; ?>
@@ -712,7 +526,7 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
 
         <?php if (!empty($errors)): ?>
             <div class="card">
-                <h2>⚠️ Validation Errors</h2>
+                <h2>Validation Errors</h2>
                 <div class="error-list">
                     <ul>
                         <?php foreach ($errors as $error): ?>
@@ -725,7 +539,7 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
 
         <div class="card">
             <h2>Upload Excel File</h2>
-            <p style="color: #666; margin-bottom: 20px;">
+            <p class="description-text">
                 Upload an Excel (.xlsx, .xls) or CSV file containing cybercrime incident data.
                 The file will be validated before import.
             </p>
@@ -734,16 +548,16 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
                 <div class="upload-area" onclick="document.getElementById('fileInput').click()">
                     <div class="upload-icon">📁</div>
                     <h3>Click to select file or drag & drop</h3>
-                    <p style="color: #999; margin-top: 10px;">Supported: .xlsx, .xls, .csv (Max 10MB)</p>
+                    <p class="upload-subtext">Supported: .xlsx, .xls, .csv (Max 10MB)</p>
                 </div>
                 <input type="file" name="excel_file" id="fileInput" accept=".xlsx,.xls,.csv" required>
                 
-                <div style="margin-top: 20px; text-align: center;">
+                <div class="button-container">
                     <button type="submit" class="btn btn-primary">Validate & Preview</button>
                 </div>
             </form>
 
-            <a href="download_template.php" class="template-download">⬇Download Excel Template</a>
+            <a href="download_template.php" class="template-download">Download Excel Template</a>
         </div>
 
         <?php if (!empty($preview_data)): ?>
@@ -773,7 +587,7 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
                 </table>
 
                     <?php if (empty($errors) || $upload_status === 'warning'): ?>
-                        <form method="POST" style="margin-top: 20px; text-align: center;">
+                        <form method="POST" class="button-container">
                             <button type="submit" name="confirm_import" class="btn btn-success">
                                 Confirm & Import All Records
                             </button>

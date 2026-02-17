@@ -20,6 +20,15 @@ $stmt->bind_param("i", $id);
 $stmt->execute();
 $result = $stmt->get_result();
 $case = $result->fetch_assoc();
+$log_sql = "SELECT cl.*, u.username 
+            FROM case_logs cl 
+            LEFT JOIN users u ON cl.user_id = u.id 
+            WHERE cl.incident_id = ? 
+            ORDER BY cl.created_at ASC";
+$log_stmt = $conn->prepare($log_sql);
+$log_stmt->bind_param("i", $id);
+$log_stmt->execute();
+$logs = $log_stmt->get_result();
 
 if (!$case) die("ERROR: Case record not found.");
 
@@ -145,6 +154,42 @@ $narrative .= "<strong>DETAILS OF INCIDENT:</strong><br>" . nl2br($details);
         <h4 style="margin-bottom: 10px; text-decoration: underline;">NARRATIVE OF EVENTS:</h4>
         <?= $narrative ?>
     </div>
+
+    <?php if ($logs->num_rows > 0): ?>
+    <div style="margin-top: 30px; margin-bottom: 30px;">
+        <h4 style="margin-bottom: 10px; text-decoration: underline;">INVESTIGATION UPDATES:</h4>
+        <table style="width: 100%; border-collapse: collapse; font-size: 11pt;">
+            <thead>
+                <tr style="border-bottom: 2px solid #000;">
+                    <th style="text-align: left; width: 20%; padding: 5px;">Date/Time</th>
+                    <th style="text-align: left; width: 20%; padding: 5px;">Officer</th>
+                    <th style="text-align: left; width: 15%; padding: 5px;">Type</th>
+                    <th style="text-align: left; width: 45%; padding: 5px;">Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php while ($log = $logs->fetch_assoc()): ?>
+                <tr style="border-bottom: 1px solid #ccc;">
+                    <td style="padding: 5px; vertical-align: top;">
+                        <?= date('M d, Y H:i', strtotime($log['created_at'])) ?>
+                    </td>
+                    <td style="padding: 5px; vertical-align: top;">
+                        <?= strtoupper($log['username']) ?>
+                    </td>
+                    <td style="padding: 5px; vertical-align: top; font-weight: bold;">
+                        <?= strtoupper($log['log_type']) ?>
+                    </td>
+                    <td style="padding: 5px; vertical-align: top;">
+                        <?= nl2br(htmlspecialchars($log['details'])) ?>
+                    </td>
+                </tr>
+                <?php endwhile; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php endif; ?>
+
+
 
     <p style="text-align: justify; font-size: 11pt; margin-bottom: 40px;">
         I HEREBY CERTIFY that the foregoing narrative is true and correct to the best of my knowledge and belief.

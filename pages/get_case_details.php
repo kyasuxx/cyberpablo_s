@@ -41,15 +41,15 @@ $history_html = '<div style="background: #fff; padding: 15px; border-radius: 8px
 
 // C. The "Add Entry" Form (Only visible if user has rights, assuming all logged-in users can add notes for now)
 $history_html .= '
-<h4 style="margin-top:0; color:#003366; border-bottom:2px solid #f0f0f0; padding-bottom:10px;">📋 Case Progress Log</h4>
+<h4 style="margin-top:0; color:#003366; border-bottom:2px solid #f0f0f0; padding-bottom:10px;"> Case Progress Log</h4>
 <form onsubmit="submitNote(event, '.$incident_id.')" style="background: #f9f9f9; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
     <div style="display: flex; gap: 10px; margin-bottom: 10px;">
         <select id="type-'.$incident_id.'" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-weight: bold; color: #333;">
             <option value="General">General Update</option>
-            <option value="Interview">🗣️ Subject Interview</option>
-            <option value="Evidence">📂 Evidence Collection</option>
-            <option value="Surveillance">👁️ Surveillance/Tracking</option>
-            <option value="Legal">⚖️ Legal/Court Order</option>
+            <option value="Interview">Subject Interview</option>
+            <option value="Evidence">Evidence Collection</option>
+            <option value="Surveillance">Surveillance/Tracking</option>
+            <option value="Legal">Legal/Court Order</option>
         </select>
         <input type="text" id="note-'.$incident_id.'" placeholder="Enter detailed progress report..." required 
                style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
