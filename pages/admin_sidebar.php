@@ -23,12 +23,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 </div>
 
                 <ul class="sidebar-menu">
-                    <li>
-                        <a href="admin_panel.php" class="<?= $current_page == 'admin_panel.php' ? 'active' : '' ?>">
-                            <span class="menu-title"><i class="fa-solid fa-house"></i>Dashboard Home</span>
-                            <!-- <span class="menu-desc">Return to central panel</span> -->
-                        </a>
-                    </li>
+                    
                     <li>
                         <a href="add_cases.php" class="<?= $current_page == 'add_cases.php' ? 'active' : '' ?>">
                             <span class="menu-title"><i class="fa-solid fa-plus"></i>New Case Entry</span>

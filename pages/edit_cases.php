@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once 'config/connection.php';
+require_once 'spatial_helper.php'; // <-- ADDED: The Spatial Geofencing Tool
 
 // Security check
 if (!isset($_SESSION['user_id'])) {
@@ -76,6 +77,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_case'])) {
     $conn->begin_transaction();
     
     try {
+        // --- SPATIAL GEOFENCING AUTO-CORRECTOR ---
+        $final_barangay = $_POST['barangay'];
+        $final_barangay_id = $_POST['barangay_id'];
+        $final_lat = (float)$_POST['lat'];
+        $final_lng = (float)$_POST['lng'];
+
+        if ($final_lat !== 0.0 && $final_lng !== 0.0) {
+            $geojson_path = '../api/san_pablo_barangays.json'; 
+            
+            // Ask the math engine: Where did the user actually drag the pin?
+            $true_brgy_name = getTrueBarangayFromGeoJSON($final_lat, $final_lng, $geojson_path);
+            
+            if ($true_brgy_name) {
+                // Smart Matcher
+                $search1 = $true_brgy_name;
+                $search2 = "Brgy. " . $true_brgy_name;
+                $search3 = "Barangay " . $true_brgy_name;
+                
+                $brgy_stmt = $conn->prepare("
+                    SELECT id, official_name FROM barangays 
+                    WHERE official_name = ? OR alt_name = ? 
+                       OR official_name = ? OR official_name = ? 
+                    LIMIT 1
+                ");
+                $brgy_stmt->bind_param("ssss", $search1, $search1, $search2, $search3);
+                $brgy_stmt->execute();
+                $brgy_data = $brgy_stmt->get_result()->fetch_assoc();
+                
+                if ($brgy_data) {
+                    // SILENT CORRECTION: Override the user's text input with the geographic truth
+                    $final_barangay = $brgy_data['official_name'];
+                    $final_barangay_id = $brgy_data['id'];
+                }
+            }
+        }
+        // ------------------------------------------
+
         // Update incident
         $update_stmt = $conn->prepare("
             UPDATE incidents SET
@@ -107,76 +145,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_case'])) {
             WHERE case_no = ?
         ");
         
-        // FIXED: Proper NULL handling for date fields
-        // Handle nullable fields properly
         $prosecutor_id = !empty($_POST['prosecutor_id']) ? $_POST['prosecutor_id'] : null;
         $prosecutor_text = isset($_POST['prosecutor_text']) ? trim($_POST['prosecutor_text']) : '';
 
-        // Bail recommended
         $bail = (isset($_POST['bail_recommended']) && $_POST['bail_recommended'] !== '' && $_POST['bail_recommended'] > 0) 
             ? floatval($_POST['bail_recommended']) 
             : null;
 
-        // Date committed
         $date_committed = (isset($_POST['date_committed']) && $_POST['date_committed'] !== '') 
             ? $_POST['date_committed'] 
             : null;
 
-        // Received date
         $received_date = (isset($_POST['received_date']) && $_POST['received_date'] !== '') 
             ? $_POST['received_date'] 
             : null;
 
-        // Date filed - THE MAIN FIX
         $date_filed = (isset($_POST['date_filed']) && $_POST['date_filed'] !== '') 
             ? $_POST['date_filed'] 
             : null;
 
-        // Returned date
         $returned_date = (isset($_POST['returned_date']) && $_POST['returned_date'] !== '') 
             ? $_POST['returned_date'] 
             : null;
         
-        // Count check: we have 25 parameters in UPDATE + WHERE
         $update_stmt->bind_param(
-            "ssiddsssssssssssssdissssss",  // 26 characters
-            $_POST['incident_type'],       // 1: s
-            $_POST['barangay'],             // 2: s
-            $_POST['barangay_id'],
-            $_POST['lat'],                  // 3: d
-            $_POST['lng'],                  // 4: d
-            $_POST['incident_date'],        // 5: s
-            $_POST['modus_operandi'],       // 6: s
-            $new_status,                    // 7: s
-            $_POST['accused'],              // 8: s
-            $_POST['accused_address'],      // 9: s
-            $_POST['accused_contact'],      // 10: s
-            $_POST['complainant'],          // 11: s
-            $_POST['complainant_address'],  // 12: s
-            $_POST['complainant_contact'],  // 13: s
-            $_POST['nps_docket'],           // 14: s
-            $_POST['offense_crime'],        // 15: s
-            $date_committed,                // 16: s
-            $date_filed,                    // 17: s ← DATE FILED HERE
-            $bail,                          // 18: d
-            $prosecutor_id,                 // 19: i
-            $prosecutor_text,               // 20: s
-            $_POST['received_by'],          // 21: s
-            $received_date,                 // 22: s
-            $_POST['returned_to'],          // 23: s
-            $returned_date,                 // 24: s
-            $case_id                        // 25: s
+            "ssiddsssssssssssssdissssss",  
+            $_POST['incident_type'],       
+            $final_barangay,               // <-- Uses Geo-Validated Data
+            $final_barangay_id,            // <-- Uses Geo-Validated Data
+            $final_lat,                    // <-- Uses Geo-Validated Data
+            $final_lng,                    // <-- Uses Geo-Validated Data
+            $_POST['incident_date'],       
+            $_POST['modus_operandi'],      
+            $new_status,                   
+            $_POST['accused'],             
+            $_POST['accused_address'],     
+            $_POST['accused_contact'],     
+            $_POST['complainant'],         
+            $_POST['complainant_address'], 
+            $_POST['complainant_contact'], 
+            $_POST['nps_docket'],          
+            $_POST['offense_crime'],       
+            $date_committed,               
+            $date_filed,                   
+            $bail,                         
+            $prosecutor_id,                
+            $prosecutor_text,              
+            $_POST['received_by'],         
+            $received_date,                
+            $_POST['returned_to'],         
+            $returned_date,                
+            $case_id                       
         );
-
-        // Type string: "ssddsssssssssssssdissssss"
-        // Count: s(20) + d(3) + i(1) + s(1) = 25 characters ✓
-        // Parameters: 25 values ✓
         
         if (!$update_stmt->execute()) {
             throw new Exception("Failed to update case");
         }
         
-        // Insert status history if status changed
         if ($old_status !== $new_status) {
             $history_insert = $conn->prepare("
                 INSERT INTO case_status_history (incident_id, status, changed_by, remarks)
@@ -186,7 +211,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_case'])) {
             $history_insert->execute();
         }
         
-        // Handle file uploads
         if (!empty($_FILES['attachments']['name'][0])) {
             $upload_dir = "../uploads/cases/" . $case_id . "/";
             if (!is_dir($upload_dir)) {
@@ -206,22 +230,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_case'])) {
                         ");
                         $att_stmt->bind_param("issi", $case['id'], $filename, $target, $user_id);
                         $att_stmt->execute();
-                        $att_stmt->close(); // Added close statement
+                        $att_stmt->close(); 
                     }
                 }
             }
         }
         
-        // Audit log
         $audit = $conn->prepare("INSERT INTO audit_log (user_id, action, ip_address) VALUES (?, ?, ?)");
         $action = "edit_cases_" . $case_id;
         $audit->bind_param("iss", $user_id, $action, $_SERVER['REMOTE_ADDR']);
         $audit->execute();
         
         $conn->commit();
-        $success_msg = "Case updated successfully!";
+        $success_msg = "Case updated successfully! Geographic alignment verified.";
         
-        // Refresh case data
         $stmt->execute();
         $case = $stmt->get_result()->fetch_assoc();
         
@@ -231,12 +253,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_case'])) {
     }
 }
 
-// Get existing attachments
 $att_stmt = $conn->prepare("SELECT * FROM attachments WHERE incident_id = ?");
 $att_stmt->bind_param("i", $case['id']);
 $att_stmt->execute();
 $attachments_result = $att_stmt->get_result();
-$attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the filesize path
+$attachment_dir = "../uploads/cases/" . $case_id . "/"; 
 ?>
 
 <!DOCTYPE html>
@@ -262,7 +283,6 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
             <?php endif; ?>
 
             <form method="POST" enctype="multipart/form-data">
-                <!-- Basic Information -->
                 <div class="card">
                     <h2>Basic Information</h2>
                     
@@ -272,14 +292,20 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
                             <input type="text" value="<?= htmlspecialchars($case['case_no']) ?>" disabled>
                         </div>
                         <div class="form-group">
-                            <label class="required">Incident Type</label>
-                            <select name="incident_type" required>
-                                <option value="Phishing" <?= $case['incident_type']=='Phishing'?'selected':'' ?>>Phishing</option>
-                                <option value="Online Fraud" <?= $case['incident_type']=='Online Fraud'?'selected':'' ?>>Online Fraud</option>
-                                <option value="Identity Theft" <?= $case['incident_type']=='Identity Theft'?'selected':'' ?>>Identity Theft</option>
-                                <option value="Cyber Harassment" <?= $case['incident_type']=='Cyber Harassment'?'selected':'' ?>>Cyber Harassment</option>
+                            <label for="incident_type" class="required">Incident Type</label>
+                            <select id="incident_type" name="incident_type" required>
+                                <option value="">Select a type...</option>
+                                <option value="Republic Act No. 10175 (Phishing)" <?= $case['incident_type']=='Republic Act No. 10175 (Phishing)'?'selected':'' ?>>Republic Act No. 10175 (Phishing)</option>
+                                <option value="Republic Act No. 10175 (Online Fraud)" <?= $case['incident_type']=='Republic Act No. 10175 (Online Fraud)'?'selected':'' ?>>Republic Act No. 10175 (Online Fraud)</option>
+                                <option value="Republic Act No. 10175 (Identity Theft)" <?= $case['incident_type']=='Republic Act No. 10175 (Identity Theft)'?'selected':'' ?>>Republic Act No. 10175 (Identity Theft)</option>
+                                <option value="Republic Act No. 10175 (Cyber Harassment)" <?= $case['incident_type']=='Republic Act No. 10175 (Cyber Harassment)'?'selected':'' ?>>Republic Act No. 10175 (Cyber Harassment)</option>
+                                <option value="Republic Act No. 10175 (Sextortion)" <?= $case['incident_type']=='Republic Act No. 10175 (Sextortion)'?'selected':'' ?>>Republic Act No. 10175 (Sextortion)</option>
+                                <option value="Republic Act No. 10175 (Online Libel)" <?= $case['incident_type']=='Republic Act No. 10175 (Online Libel)'?'selected':'' ?>>Republic Act No. 10175 (Online Libel)</option>
+                                <option value="Republic Act No. 10175 (Hacking)" <?= $case['incident_type']=='Republic Act No. 10175 (Hacking)'?'selected':'' ?>>Republic Act No. 10175 (Hacking)</option>
                                 <option value="Others" <?= $case['incident_type']=='Others'?'selected':'' ?>>Others</option>
                             </select>
+
+                            <input type="text" id="other_specify" name="other_specify" placeholder="Please specify the crime..." style="display:none; margin-top:10px;">
                         </div>
                     </div>
 
@@ -289,6 +315,7 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
                             <input type="text" name="barangay" id="barangay" 
                                    value="<?= htmlspecialchars($case['official_name'] ?? $case['barangay']) ?>" 
                                    autocomplete="off" required>
+                            <input type="hidden" name="barangay_id" id="barangay_id" value="<?= $case['barangay_id'] ?>">
 
                             <div id="barangay-suggestions"></div>
                         </div>
@@ -307,11 +334,10 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
                     </div>
                 </div>
 
-                <!-- Location -->
                 <div class="card">
                     <h2>Location</h2>
                     <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
-                        Click on the map to set precise coordinates
+                        Drag the marker to adjust location. The system will automatically verify and update the registered Barangay bounds upon saving.
                     </p>
                     
                     <div class="form-row">
@@ -330,7 +356,6 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
                     <div id="map"></div>
                 </div>
 
-                <!-- Parties Involved -->
                 <div class="card">
                     <h2>👥 Parties Involved</h2>
                     
@@ -377,7 +402,6 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
                     </div>
                 </div>
 
-                <!-- Case Details -->
                 <div class="card">
                     <h2>⚖️ Case Details</h2>
                     
@@ -431,7 +455,6 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
                     </div>
                 </div>
 
-                <!-- Prosecutor Assignment -->
                 <div class="card">
                     <h2>Prosecutor Assignment</h2>
                     
@@ -458,7 +481,6 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
                     </div>
                 </div>
 
-                <!-- Processing Details -->
                 <div class="card">
                     <h2>Processing Details</h2>
                     
@@ -489,7 +511,6 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
                     </div>
                 </div>
 
-                <!-- File Attachments -->
                 <div class="card">
                     <h2>File Attachments</h2>
                     
@@ -520,6 +541,9 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
                     <button type="submit" name="update_case" class="btn btn-primary">
                         Save Changes
                     </button>
+                    <a href="print_blotter.php?id=<?= $case['id'] ?>" target="_blank" class="btn btn-secondary" style="background: #4b5563; color: white; text-decoration: none; padding: 10px 15px; border-radius: 5px;">
+                        Generate Official IRF
+                    </a>
                     <button type="button" class="btn btn-secondary" onclick="history.back()">
                         Cancel
                     </button>
@@ -528,7 +552,6 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
         </div>
 
         <div class="sidebar">
-            <!-- Status History -->
             <div class="card">
                 <h2>Status History</h2>
                 <?php if ($status_history->num_rows > 0): ?>
@@ -549,7 +572,6 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
                 <?php endif; ?>
             </div>
 
-            <!-- Quick Info -->
             <div class="card">
                 <h2>Case Info</h2>
                 <div style="display: flex; flex-direction: column; gap: 12px;">
@@ -596,6 +618,34 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors'
         }).addTo(map);
+
+        // --- ADD GEOJSON BORDERS TO MAP ---
+        fetch('../api/san_pablo_barangays.json')
+            .then(response => response.json())
+            .then(data => {
+                L.geoJSON(data, {
+                    style: function (feature) {
+                        return {
+                            color: "#003366",       // Dark blue border line
+                            weight: 2,              // Thickness of the line
+                            opacity: 0.6,           // Transparency of the line
+                            fillColor: "#003366",   // Fill color
+                            fillOpacity: 0.05,      // Very light fill so you can still see the streets
+                            dashArray: '5, 5'       // Makes it a dashed line
+                        };
+                    },
+                    // Optional: Add a little tooltip when hovering over a border
+                    onEachFeature: function (feature, layer) {
+                        if (feature.properties && feature.properties.adm4_en) {
+                            layer.bindTooltip(feature.properties.adm4_en, {
+                                sticky: true,
+                                className: 'barangay-tooltip'
+                            });
+                        }
+                    }
+                }).addTo(map);
+            })
+            .catch(error => console.error("Error loading Barangay borders:", error));
 
         // Add draggable marker
         let marker = L.marker([<?= $case['lat'] ?>, <?= $case['lng'] ?>], {
@@ -698,7 +748,6 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
         
         prosecutorDropdown.addEventListener('change', function() {
             if (this.value) {
-                // Get selected prosecutor name
                 const selectedOption = this.options[this.selectedIndex];
                 const prosecutorName = selectedOption.text.split(' (')[0];
                 prosecutorText.value = prosecutorName;
@@ -710,7 +759,6 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
             }
         });
 
-        // Trigger on page load if prosecutor is already selected
         if (prosecutorDropdown.value) {
             prosecutorText.disabled = true;
             prosecutorText.style.backgroundColor = '#f0f0f0';
@@ -730,7 +778,6 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
                 return false;
             }
 
-            // Validate file sizes
             const files = fileInput.files;
             for (let i = 0; i < files.length; i++) {
                 if (files[i].size > 5 * 1024 * 1024) {
@@ -741,40 +788,8 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
             }
         });
 
-        // Auto-save draft (optional - store in localStorage)
-        let autoSaveTimer;
-        const formInputs = form.querySelectorAll('input, select, textarea');
-        
-        formInputs.forEach(input => {
-            if (input.type !== 'submit' && input.type !== 'file') {
-                input.addEventListener('change', function() {
-                    clearTimeout(autoSaveTimer);
-                    autoSaveTimer = setTimeout(() => {
-                        console.log('Auto-saving draft...');
-                        // You can implement actual auto-save to database here
-                    }, 2000);
-                });
-            }
-        });
-
-        // Keyboard shortcuts
-        document.addEventListener('keydown', function(e) {
-            // Ctrl/Cmd + S to save
-            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-                e.preventDefault();
-                form.querySelector('[name="update_case"]').click();
-            }
-            
-            // Escape to cancel
-            if (e.key === 'Escape') {
-                if (confirm('Discard changes and go back?')) {
-                    history.back();
-                }
-            }
-        });
-
-        // Warn before leaving with unsaved changes
         let formChanged = false;
+        const formInputs = form.querySelectorAll('input, select, textarea');
         formInputs.forEach(input => {
             input.addEventListener('change', () => formChanged = true);
         });
@@ -788,7 +803,7 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/"; // Keep this for the fil
         });
 
         form.addEventListener('submit', function() {
-            formChanged = false; // Don't warn when submitting
+            formChanged = false; 
         });
     </script>
 </body>

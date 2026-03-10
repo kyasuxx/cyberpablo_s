@@ -38,7 +38,7 @@ $params = []; $types = "";
 
 // Apply filters
 if ($search) {
-    // UPDATED: Added OR checks for 'accused_contact' and 'complainant_contact'
+    // Matches the 9 fields
     $sql .= " AND (i.case_no LIKE ? 
                    OR i.accused LIKE ? 
                    OR i.complainant LIKE ? 
@@ -46,15 +46,12 @@ if ($search) {
                    OR b.alt_name LIKE ? 
                    OR i.modus_operandi LIKE ? 
                    OR i.accused_contact LIKE ? 
-                   OR i.complainant_contact LIKE ?)";
+                   OR i.complainant_contact LIKE ?
+                   OR i.received_by LIKE ?)";
                    
     $like = "%$search%";
-    
-    // UPDATED: Added 2 more $like to the array (Total 8 items now)
-    $params = array_merge($params, [$like, $like, $like, $like, $like, $like, $like, $like]);
-    
-    // UPDATED: Added 2 more 's' to the type string (Total 8 's')
-    $types .= "ssssssss";
+    $params = array_merge($params, [$like, $like, $like, $like, $like, $like, $like, $like, $like]);
+    $types .= "sssssssss";
 }
 if ($type) { 
     $sql .= " AND i.incident_type = ?"; 
@@ -64,7 +61,7 @@ if ($type) {
 if ($barangay) { 
     $sql .= " AND b.id = ?"; 
     $params[] = $barangay; 
-    $types .= "i"; // 'i' for integer
+    $types .= "i"; 
 }
 if ($status) { 
     $sql .= " AND i.status = ?"; 
@@ -72,7 +69,7 @@ if ($status) {
     $types .= "s"; 
 }
 
-// NEW: Date range filter
+// Date range filter
 if ($date_from && $date_to) {
     $sql .= " AND i.incident_date BETWEEN ? AND ?";
     $params[] = $date_from;
@@ -88,7 +85,7 @@ if ($date_from && $date_to) {
     $types .= "s";
 }
 
-// NEW: Month filter
+// Month filter
 if ($month && $year) {
     $sql .= " AND MONTH(i.incident_date) = ? AND YEAR(i.incident_date) = ?";
     $params[] = $month;
@@ -112,20 +109,13 @@ $count_stmt->execute();
 $total = $count_stmt->get_result()->fetch_row()[0];
 $pages = ceil($total / $limit);
 
-// Main query with pagination
-// $sql .= " ORDER BY i.incident_date DESC LIMIT ? OFFSET ?";
-// --- SORTING ALGORITHM START ---
-// Check if user clicked a sort button, otherwise default to Newest Case First
+// Sorting logic
 $sort_order = $_GET['sort'] ?? 'desc'; 
-
 if ($sort_order === 'asc') {
-    // Oldest First (CYBER-2025-0001 -> CYBER-2026-0001)
     $sql .= " ORDER BY i.case_no ASC LIMIT ? OFFSET ?";
 } else {
-    // Newest First (CYBER-2026-0001 -> CYBER-2025-0001)
     $sql .= " ORDER BY i.case_no DESC LIMIT ? OFFSET ?";
 }
-// --- SORTING ALGORITHM END ---
 $params[] = $limit; $params[] = $offset; $types .= "ii";
 
 $stmt = $conn->prepare($sql);
@@ -135,37 +125,6 @@ $result = $stmt->get_result();
 
 // Get barangays for dropdown
 $barangay_result = $conn->query("SELECT id, official_name, alt_name FROM barangays ORDER BY official_name");
-
-// NEW: Get crime type statistics for current filters
-$stats_sql = "SELECT i.incident_type, COUNT(*) as count
-              FROM incidents i 
-              LEFT JOIN barangays b ON i.barangay_id = b.id
-              WHERE 1=1";
-
-// Apply same filters for stats
-$stats_params = [];
-$stats_types = "";
-if ($search) {
-    $stats_sql .= " AND (i.case_no LIKE ? OR i.accused LIKE ? OR i.complainant LIKE ? OR b.official_name LIKE ? OR b.alt_name LIKE ? OR i.modus_operandi LIKE ?)";
-    $like = "%$search%";
-    $stats_params = array_merge($stats_params, [$like, $like, $like, $like, $like, $like]);
-    $stats_types .= "ssssss";
-}
-if ($type) { $stats_sql .= " AND i.incident_type = ?"; $stats_params[] = $type; $stats_types .= "s"; }
-if ($barangay) { $stats_sql .= " AND b.id = ?"; $stats_params[] = $barangay; $stats_types .= "i"; }
-if ($status) { $stats_sql .= " AND i.status = ?"; $stats_params[] = $status; $stats_types .= "s"; }
-if ($date_from && $date_to) { $stats_sql .= " AND i.incident_date BETWEEN ? AND ?"; $stats_params[] = $date_from; $stats_params[] = $date_to; $stats_types .= "ss"; }
-elseif ($date_from) { $stats_sql .= " AND i.incident_date >= ?"; $stats_params[] = $date_from; $stats_types .= "s"; }
-elseif ($date_to) { $stats_sql .= " AND i.incident_date <= ?"; $stats_params[] = $date_to; $stats_types .= "s"; }
-if ($month && $year) { $stats_sql .= " AND MONTH(i.incident_date) = ? AND YEAR(i.incident_date) = ?"; $stats_params[] = $month; $stats_params[] = $year; $stats_types .= "ii"; }
-elseif ($month) { $stats_sql .= " AND MONTH(i.incident_date) = ?"; $stats_params[] = $month; $stats_types .= "i"; }
-elseif ($year) { $stats_sql .= " AND YEAR(i.incident_date) = ?"; $stats_params[] = $year; $stats_types .= "i"; }
-
-$stats_sql .= " GROUP BY i.incident_type ORDER BY count DESC";
-$stats_stmt = $conn->prepare($stats_sql);
-if ($stats_params) $stats_stmt->bind_param($stats_types, ...$stats_params);
-$stats_stmt->execute();
-$crime_stats = $stats_stmt->get_result();
 
 // Get available years for dropdown
 $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM incidents ORDER BY year DESC");
@@ -185,7 +144,6 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
     <div class="container">
         <h2>Cases Dashboard (<?= $total ?> Total)</h2>
 
-        <!-- Stats -->
         <div class="stats">
             <div class="stat-box">
                 <h3><?= $conn->query("SELECT COUNT(*) FROM incidents WHERE status='Open'")->fetch_row()[0] ?></h3>
@@ -201,9 +159,6 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
             </div>
         </div>
 
-        
-
-        <!-- Active Filters Display -->
         <?php if ($search || $type || $barangay || $status || $date_from || $date_to || $month || $year): ?>
         <div class="active-filters">
             <strong>Active Filters:</strong>
@@ -223,16 +178,19 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
         </div>
         <?php endif; ?>
 
-        <!-- Filters -->
         <div class="modern-filters-card">
             <form method="GET" id="filterForm">
                 <div class="search-bar-row">
-                    <input type="text" name="search" class="main-search-input" placeholder="Search Case No, Accused, Complainant..." value="<?= htmlspecialchars($search) ?>">
+                    <input type="text" name="search" class="main-search-input" placeholder="Search Case No, Names, or Modus Operandi keywords..." value="<?= htmlspecialchars($search) ?>">
                     <button type="submit" class="btn-search">Search</button>
                     <button type="button" class="btn-toggle-filters" onclick="toggleAdvancedFilters()">
                         Advanced Filters
                     </button>
-                    <a href="cases.php" class="btn-clear">✖ Clear</a>
+                    <a href="cases.php" class="btn-clear">Clear</a>
+                    <button type="button" class="btn-toggle-filters" style="background-color: #17a2b8; color: white;" 
+                        onclick="window.location.href='cases.php?search=<?= urlencode($_SESSION['username']) ?>'">
+                        My Cases
+                    </button>
                 </div>
 
                 <div id="advancedFilters" class="advanced-filters-grid" style="display: <?= ($type || $barangay || $status || $date_from || $month || $year) ? 'grid' : 'none' ?>;">
@@ -241,10 +199,13 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
                         <label>Incident Type</label>
                         <select name="type" class="modern-select">
                             <option value="">All Types</option>
-                            <option value="Phishing" <?= $type=='Phishing'?'selected':'' ?>>Phishing</option>
-                            <option value="Online Fraud" <?= $type=='Online Fraud'?'selected':'' ?>>Online Fraud</option>
-                            <option value="Cyber Harassment" <?= $type=='Cyber Harassment'?'selected':'' ?>>Cyber Harassment</option>
-                            <option value="Identity Theft" <?= $type=='Identity Theft'?'selected':'' ?>>Identity Theft</option>
+                            <option value="Republic Act No. 10175 (Phishing)" <?= $type=='Republic Act No. 10175 (Phishing)'?'selected':'' ?>>Republic Act No. 10175 (Phishing)</option>
+                            <option value="Republic Act No. 10175 (Online Fraud)" <?= $type=='Republic Act No. 10175 (Online Fraud)'?'selected':'' ?>>Republic Act No. 10175 (Online Fraud)</option>
+                            <option value="Republic Act No. 10175 (Cyber Harassment)" <?= $type=='Republic Act No. 10175 (Cyber Harassment)'?'selected':'' ?>>Republic Act No. 10175 (Cyber Harassment)</option>
+                            <option value="Republic Act No. 10175 (Identity Theft)" <?= $type=='Republic Act No. 10175 (Identity Theft)'?'selected':'' ?>>Republic Act No. 10175 (Identity Theft)</option>
+                            <option value="Republic Act No. 10175 (Sextortion)" <?= $type=='Republic Act No. 10175 (Sextortion)'?'selected':'' ?>>Republic Act No. 10175 (Sextortion)</option>
+                            <option value="Republic Act No. 10175 (Online Libel)" <?= $type=='Republic Act No. 10175 (Online Libel)'?'selected':'' ?>>Republic Act No. 10175 (Online Libel)</option>
+                            <option value="Republic Act No. 10175 (Hacking)" <?= $type=='Republic Act No. 10175 (Hacking)'?'selected':'' ?>>Republic Act No. 10175 (Hacking)</option>
                             <option value="Others" <?= $type=='Others'?'selected':'' ?>>Others</option>
                         </select>
                     </div>
@@ -275,10 +236,10 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
                     </div>
 
                     <div class="filter-group">
-                        <label>Date Range (From - To)</label>
+                        <label>Date Range <span id="dayFrom" style="color: #003366; font-weight: normal; margin-left: 5px;"></span> <span id="dayTo" style="color: #003366; font-weight: normal; margin-left: 5px;"></span></label>
                         <div style="display:flex; gap:5px;">
-                            <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>" class="modern-input">
-                            <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>" class="modern-input">
+                            <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>" class="modern-input" id="filterDateFrom">
+                            <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>" class="modern-input" id="filterDateTo">
                         </div>
                     </div>
 
@@ -303,227 +264,275 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
                 </div>
             </form>
         </div>
-
-        <!-- Table -->
-        <table>
-            <tr>
-                <th>
-                    <a href="?sort=<?= ($sort_order === 'desc') ? 'asc' : 'desc' ?>&search=<?= urlencode($search) ?>&type=<?= $type ?>&barangay=<?= urlencode($barangay) ?>&status=<?= $status ?>" 
-                    style="color: white; text-decoration: none; display: flex; align-items: center; gap: 5px;">
-                        Case No 
-                        <?php if($sort_order === 'asc'): ?> ▲ <?php else: ?> ▼ <?php endif; ?>
-                    </a>
-                </th>
-                <th>Type</th>
-                <th>Accused</th>
-                <th>Complainant</th>
-                <th>Barangay</th>
-                <th>Incident Date</th>
-                <th>Status</th>
-                <th>Map</th>
-            </tr>
-            <?php 
-            while ($row = $result->fetch_assoc()): 
-                // Get prosecutor name
-                $prosecutor_display = '—';
-                if ($row['prosecutor_id'] && isset($prosecutors[$row['prosecutor_id']])) {
-                    $prosecutor_display = $prosecutors[$row['prosecutor_id']];
-                } elseif ($row['prosecutor']) {
-                    $prosecutor_display = $row['prosecutor'];
-                }
-            ?>
-            <tr class="case-row" onclick="toggleDetails(<?= $row['id'] ?>)">
-                <td><strong><?= $row['case_no'] ?></strong></td>
-                <td><?= $row['incident_type'] ?></td>
-                <td><?= htmlspecialchars($row['accused'] ?? '—') ?></td>
-                <td><?= htmlspecialchars($row['complainant'] ?? '—') ?></td>
-                <td>
-                    <?= htmlspecialchars($row['official_name'] ?? $row['barangay']) ?>
-                    <?php if ($row['alt_name'] && $row['official_name']): ?>
-                        <div class="alt-name">(<?= $row['alt_name'] ?>)</div>
-                    <?php endif; ?>
-                </td>
-                <td><?= date('M d, Y', strtotime($row['incident_date'])) ?></td>
-                <td>
-                    <span class="status-<?= strtolower(str_replace(' ', '-', $row['status'])) ?>">
-                        <?= $row['status'] ?>
-                    </span>
-                </td>
-                <td>
-                    <?php if ($row['incident_lat'] && $row['incident_lng']): ?>
-                        <a href="dashboard.php?lat=<?= $row['incident_lat'] ?>&lng=<?= $row['incident_lng'] ?>&case=<?= urlencode($row['case_no']) ?>" 
-                           style="color:green; font-weight:bold; text-decoration:none;">View on Map</a>
-                    <?php else: ?>
-                        <span style="color:orange;">No GPS</span>
-                    <?php endif; ?>
-                </td>
-            </tr>
-            
-            <!-- EXPANDABLE DETAILS ROW -->
-            <tr id="details-<?= $row['id'] ?>" class="details-row" style="display:none;">
-                <td colspan="8">
-                    <div class="section-title">Case Information</div>
-                    <div class="detail-grid">
-                        <div class="detail-item">
-                            <div class="detail-label">Prosecutor</div>
-                            <div class="detail-value"><?= htmlspecialchars($prosecutor_display) ?></div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">NPS Docket</div>
-                            <div class="detail-value"><?= htmlspecialchars($row['nps_docket'] ?? '—') ?></div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Date Committed</div>
-                            <div class="detail-value">
-                                <?= (!empty($row['date_committed'])) 
-                                    ? date('M d, Y H:i', strtotime($row['date_committed'])) 
-                                    : '—' ?>
+        <div style="overflow-x: auto; width: 100%;">
+            <table>
+                <tr>
+                    <th>
+                        <a href="?sort=<?= ($sort_order === 'desc') ? 'asc' : 'desc' ?>&search=<?= urlencode($search) ?>&type=<?= urlencode($type) ?>&barangay=<?= urlencode($barangay) ?>&status=<?= $status ?>" 
+                        style="color: white; text-decoration: none; display: flex; align-items: center; gap: 5px;">
+                            Case No 
+                            <?php if($sort_order === 'asc'): ?> ASC <?php else: ?> DESC <?php endif; ?>
+                        </a>
+                    </th>
+                    <th>Type</th>
+                    <th>Accused</th>
+                    <th>Complainant</th>
+                    <th>Barangay</th>
+                    <th>Incident Date</th>
+                    <th>Status</th>
+                    <th>Map</th>
+                </tr>
+                
+                <?php if ($result->num_rows > 0): ?>
+                    <?php 
+                    while ($row = $result->fetch_assoc()): 
+                        $prosecutor_display = 'Not Assigned';
+                        if ($row['prosecutor_id'] && isset($prosecutors[$row['prosecutor_id']])) {
+                            $prosecutor_display = $prosecutors[$row['prosecutor_id']];
+                        } elseif ($row['prosecutor']) {
+                            $prosecutor_display = $row['prosecutor'];
+                        }
+                    ?>
+                    <tr class="case-row" onclick="toggleDetails(<?= $row['id'] ?>)">
+                        <td><strong><?= $row['case_no'] ?></strong></td>
+                        <td><?= htmlspecialchars($row['incident_type']) ?></td>
+                        <td><?= htmlspecialchars($row['accused'] ?? 'Not Specified') ?></td>
+                        <td><?= htmlspecialchars($row['complainant'] ?? 'Not Specified') ?></td>
+                        <td>
+                            <?= htmlspecialchars($row['official_name'] ?? $row['barangay']) ?>
+                            <?php if ($row['alt_name'] && $row['official_name']): ?>
+                                <div class="alt-name">(<?= $row['alt_name'] ?>)</div>
+                            <?php endif; ?>
+                        </td>
+                        <td><?= date('l, M d, Y', strtotime($row['incident_date'])) ?></td>
+                        <td>
+                            <span class="status-<?= strtolower(str_replace(' ', '-', $row['status'])) ?>">
+                                <?= $row['status'] ?>
+                            </span>
+                        </td>
+                        <td>
+                            <?php if ($row['incident_lat'] && $row['incident_lng']): ?>
+                                <a href="dashboard.php?lat=<?= $row['incident_lat'] ?>&lng=<?= $row['incident_lng'] ?>&case=<?= urlencode($row['case_no']) ?>" 
+                                style="color:green; font-weight:bold; text-decoration:none;">View on Map</a>
+                            <?php else: ?>
+                                <span style="color:orange;">No GPS</span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    
+                    <tr id="details-<?= $row['id'] ?>" class="details-row" style="display:none;">
+                        <td colspan="8">
+                            <div class="section-title">Case Information</div>
+                            <div class="detail-grid">
+                                <div class="detail-item">
+                                    <div class="detail-label">Prosecutor</div>
+                                    <div class="detail-value"><?= htmlspecialchars($prosecutor_display) ?></div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">NPS Docket</div>
+                                    <div class="detail-value"><?= htmlspecialchars($row['nps_docket'] ?? 'Not Specified') ?></div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Date Committed</div>
+                                    <div class="detail-value">
+                                        <?= (!empty($row['date_committed'])) 
+                                            ? date('l, M d, Y H:i', strtotime($row['date_committed'])) 
+                                            : 'Not Specified' ?>
+                                    </div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Date Filed</div>
+                                    <div class="detail-value">
+                                        <?= (!empty($row['date_filed'])) 
+                                            ? date('l, M d, Y', strtotime($row['date_filed'])) 
+                                            : 'Not Specified' ?>
+                                    </div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Bail Recommended</div>
+                                    <div class="detail-value">
+                                        <?= $row['bail_recommended'] ? 'Php ' . number_format($row['bail_recommended'], 2) : 'Not Specified' ?>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Date Filed</div>
-                            <div class="detail-value">
-                                <?= (!empty($row['date_filed'])) 
-                                    ? date('M d, Y', strtotime($row['date_filed'])) 
-                                    : '—' ?>
+
+                            <div class="section-title">Parties Involved</div>
+                            <div class="detail-grid">
+                                <div class="detail-item">
+                                    <div class="detail-label">Complainant Address</div>
+                                    <div class="detail-value"><?= htmlspecialchars($row['complainant_address'] ?? 'Not Specified') ?></div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Complainant Contact</div>
+                                    <div class="detail-value"><?= htmlspecialchars($row['complainant_contact'] ?? 'Not Specified') ?></div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Accused Address</div>
+                                    <div class="detail-value"><?= htmlspecialchars($row['accused_address'] ?? 'Not Specified') ?></div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Accused Contact</div>
+                                    <div class="detail-value"><?= htmlspecialchars($row['accused_contact'] ?? 'Not Specified') ?></div>
+                                </div>
                             </div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Bail Recommended</div>
-                            <div class="detail-value">
-                                <?= $row['bail_recommended'] ? '₱' . number_format($row['bail_recommended'], 2) : '—' ?>
+
+                            <div class="section-title">Processing Details</div>
+                            <div class="detail-grid">
+                                <div class="detail-item">
+                                    <div class="detail-label">Received By</div>
+                                    <div class="detail-value"><?= htmlspecialchars($row['received_by'] ?? 'Not Specified') ?></div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Received Date</div>
+                                    <div class="detail-value">
+                                        <?= (!empty($row['received_date'])) 
+                                            ? date('M d, Y H:i', strtotime($row['received_date'])) 
+                                            : 'Not Specified' ?>
+                                    </div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Returned To</div>
+                                    <div class="detail-value"><?= htmlspecialchars($row['returned_to'] ?? 'Not Specified') ?></div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Returned Date</div>
+                                    <div class="detail-value">
+                                        <?= (!empty($row['returned_date'])) 
+                                            ? date('M d, Y H:i', strtotime($row['returned_date'])) 
+                                            : 'Not Specified' ?>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </div>
 
-                    <div class="section-title">Parties Involved</div>
-                    <div class="detail-grid">
-                        <div class="detail-item">
-                            <div class="detail-label">Complainant Address</div>
-                            <div class="detail-value"><?= htmlspecialchars($row['complainant_address'] ?? '—') ?></div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Complainant Contact</div>
-                            <div class="detail-value"><?= htmlspecialchars($row['complainant_contact'] ?? '—') ?></div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Accused Address</div>
-                            <div class="detail-value"><?= htmlspecialchars($row['accused_address'] ?? '—') ?></div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Accused Contact</div>
-                            <div class="detail-value"><?= htmlspecialchars($row['accused_contact'] ?? '—') ?></div>
-                        </div>
-                    </div>
-
-                    <div class="section-title">Processing Details</div>
-                    <div class="detail-grid">
-                        <div class="detail-item">
-                            <div class="detail-label">Received By</div>
-                            <div class="detail-value"><?= htmlspecialchars($row['received_by'] ?? '—') ?></div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Received Date</div>
-                            <div class="detail-value">
-                                <?= (!empty($row['received_date'])) 
-                                    ? date('M d, Y H:i', strtotime($row['received_date'])) 
-                                    : '—' ?>
+                            <div class="section-title">Investigation Details</div>
+                            <div class="detail-grid">
+                                <div class="detail-item">
+                                    <div class="detail-label">Modus Operandi</div>
+                                    <div class="detail-value"><?= nl2br(htmlspecialchars($row['modus_operandi'] ?? 'Not Specified')) ?></div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Evidence Notes</div>
+                                    <div class="detail-value"><?= nl2br(htmlspecialchars($row['evidence_notes'] ?? 'Not Specified')) ?></div>
+                                </div>
                             </div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Returned To</div>
-                            <div class="detail-value"><?= htmlspecialchars($row['returned_to'] ?? '—') ?></div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Returned Date</div>
-                            <div class="detail-value">
-                                <?= (!empty($row['returned_date'])) 
-                                    ? date('M d, Y H:i', strtotime($row['returned_date'])) 
-                                    : '—' ?>
+
+                            <div class="section-title">Attachments</div>
+                            <div id="attachments-<?= $row['id'] ?>" class="details-content-loader">
+                                <p style="color: #999; font-style: italic; margin: 10px 0;">Loading attachments...</p>
                             </div>
-                        </div>
-                    </div>
 
-                    <div class="section-title">Investigation Details</div>
-                    <div class="detail-grid">
-                        <div class="detail-item">
-                            <div class="detail-label">Modus Operandi</div>
-                            <div class="detail-value"><?= nl2br(htmlspecialchars($row['modus_operandi'] ?? '—')) ?></div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Evidence Notes</div>
-                            <div class="detail-value"><?= nl2br(htmlspecialchars($row['evidence_notes'] ?? '—')) ?></div>
-                        </div>
-                    </div>
+                            <div class="section-title">Status History</div>
+                            <div id="history-<?= $row['id'] ?>" class="details-content-loader">
+                                <p style="color: #999; font-style: italic; margin: 10px 0;">Loading history...</p>
+                            </div>
 
-                    <div class="section-title">Attachments</div>
-                    <div id="attachments-<?= $row['id'] ?>" class="details-content-loader">
-                        <p style="color: #999; font-style: italic; margin: 10px 0;">Loading attachments...</p>
-                    </div>
-
-                    <div class="section-title">Status History</div>
-                    <div id="history-<?= $row['id'] ?>" class="details-content-loader">
-                        <p style="color: #999; font-style: italic; margin: 10px 0;">Loading history...</p>
-                    </div>
-
-                    <div class="action-buttons">
-                        <a href="edit_cases.php?id=<?= urlencode($row['case_no']) ?>">Edit Case</a>
-                        <!-- <a href="print_blotter.php?id=<?= $row['id'] ?>" target="_blank" class="action-btn print-btn">Print Blotter </a> -->
-                    </div>
-                </td>
-            </tr>
-            <?php endwhile; ?>
-        </table>
+                            <div class="action-buttons">
+                                <a href="edit_cases.php?id=<?= urlencode($row['case_no']) ?>">Edit Case</a>
+                            </div>
+                        </td>
+                    </tr>
+                    <?php endwhile; ?>
+                <?php else: ?>
+                    <tr>
+                        <td colspan="8" style="text-align: center; padding: 40px; color: #666; background: #f9f9f9;">
+                            <div style="font-size: 18px; font-weight: bold; margin-bottom: 5px;">No Cases Found</div>
+                            <div style="font-size: 14px;">Try adjusting your search keywords, dates, or filters to find what you are looking for.</div>
+                        </td>
+                    </tr>
+                <?php endif; ?>
+            </table>
+        </div>
+        
 
         <div class="pagination">
             <?php for ($i = 1; $i <= $pages; $i++): ?>
                 
-                <a href="?page=<?= $i ?>&search=<?= urlencode($search) ?>&type=<?= $type ?>&barangay=<?= urlencode($barangay) ?>&status=<?= $status ?>&date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>&month=<?= $month ?>&year=<?= $year ?>" 
+                <a href="?page=<?= $i ?>&search=<?= urlencode($search) ?>&type=<?= urlencode($type) ?>&barangay=<?= urlencode($barangay) ?>&status=<?= $status ?>&date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>&month=<?= $month ?>&year=<?= $year ?>" 
                    class="<?= $i==$page?'active':'' ?>"><?= $i ?></a>
 
             <?php endfor; ?>
         </div>
 
-        <button onclick="exportSmartData()" class="export" style="background: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; float: right; font-size: 14px; font-weight: bold;">
+        <button onclick="startExportProcess()" type="button" class="btn-export" style="background: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; float: right; font-size: 14px; font-weight: bold;">
           Export Current Data
         </button>
     </div>
 
-<div id="otpModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:9999; align-items:center; justify-content:center;">
-    <div style="background:white; padding:30px; border-radius:8px; width:350px; text-align:center; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
-        <h3 style="color:#003366; margin-top:0;">Security Verification</h3>
-        <p style="font-size:13px; color:#666;">To prevent unauthorized data export, a verification code has been generated.</p>
+<div id="otpExportModal" class="alert-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; align-items: center; justify-content: center;">
+    <div style="background: white; padding: 25px; border-radius: 8px; width: 300px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+        <h3 style="margin-top: 0; color: #003366;">Security Verification</h3>
         
-        <input type="text" id="otpInput" placeholder="Enter 6-digit Code" maxlength="6" style="width:100%; padding:12px; margin:15px 0; text-align:center; font-size:20px; letter-spacing:5px; border:2px solid #ccc; border-radius:5px;">
+        <p style="font-size: 13px; color: #555;">An OTP has been sent to your registered email address. Please enter it to authorize this export.</p>
         
-        <div style="display:flex; gap:10px;">
-            <button onclick="closeOtpModal()" style="flex:1; padding:10px; background:#ddd; border:none; border-radius:4px; cursor:pointer;">Cancel</button>
-            <button onclick="verifyAndExport()" style="flex:1; padding:10px; background:#28a745; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">Verify & Export</button>
+        <input type="text" id="exportOtpInput" placeholder="Enter 6-digit OTP" style="width: 80%; padding: 10px; margin: 15px 0; text-align: center; font-size: 18px; letter-spacing: 2px; border: 1px solid #ccc; border-radius: 4px;" maxlength="6">
+        
+        <p id="otpErrorMsg" style="color: red; font-size: 12px; display: none;">Invalid OTP.</p>
+        
+        <div style="display: flex; gap: 10px; justify-content: center; margin-top: 15px;">
+            <button onclick="closeOtpModal()" style="padding: 8px 15px; border: none; background: #ccc; border-radius: 4px; cursor: pointer;">Cancel</button>
+            <button onclick="verifyExportOtp()" id="btnVerifyOtp" style="padding: 8px 15px; border: none; background: #003366; color: white; border-radius: 4px; cursor: pointer;">Verify & Export</button>
         </div>
     </div>
 </div>
 
+
+
 <script>
+    window.addEventListener('load', function() {
+        const searchParam = new URLSearchParams(window.location.search).get('search');
+        if (searchParam && searchParam.trim() !== '') {
+            const regex = new RegExp('(' + searchParam.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+            document.querySelectorAll('.case-row td').forEach(td => {
+                if (td.children.length === 0 || td.innerText.includes(searchParam)) {
+                    td.innerHTML = td.innerHTML.replace(regex, '<mark style="background-color: #ffeb3b; padding: 0 2px; border-radius: 2px;">$1</mark>');
+                }
+            });
+        }
+    });
+
+    // QoL FEATURE: Dynamic Day of Week Display for Filters
+    function updateFilterDays() {
+        const fromInput = document.getElementById('filterDateFrom');
+        const toInput = document.getElementById('filterDateTo');
+        const dayFrom = document.getElementById('dayFrom');
+        const dayTo = document.getElementById('dayTo');
+
+        if(fromInput && fromInput.value) {
+            const d1 = new Date(fromInput.value);
+            dayFrom.textContent = '(From: ' + d1.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'long' }) + ')';
+        } else {
+            dayFrom.textContent = '';
+        }
+
+        if(toInput && toInput.value) {
+            const d2 = new Date(toInput.value);
+            dayTo.textContent = '(To: ' + d2.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'long' }) + ')';
+        } else {
+            dayTo.textContent = '';
+        }
+    }
+    
+    document.getElementById('filterDateFrom').addEventListener('change', updateFilterDays);
+    document.getElementById('filterDateTo').addEventListener('change', updateFilterDays);
+    window.addEventListener('load', updateFilterDays);
+
+
     function toggleDetails(id) {
         const row = document.getElementById('details-' + id);
         const isVisible = row.style.display === 'table-row';
         
-        // Close all other details rows
         document.querySelectorAll('.details-row').forEach(r => {
             r.style.display = 'none';
         });
         
-        // If we are opening this row
         if (!isVisible) {
             row.style.display = 'table-row';
             
-            // Check if we already loaded the data
             const historyDiv = document.getElementById('history-' + id);
             if (historyDiv.getAttribute('data-loaded') === 'true') {
-                return; // Data is already loaded, just show the row
+                return; 
             }
 
-            // --- NEW: Fetch data from our PHP file ---
             fetch('get_case_details.php?id=' + id)
                 .then(response => {
                     if (!response.ok) {
@@ -532,20 +541,12 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
                     return response.json();
                 })
                 .then(data => {
-                    // Mark as loaded
                     historyDiv.setAttribute('data-loaded', 'true');
                     
-                    // Inject the new HTML
                     const attachmentsDiv = document.getElementById('attachments-' + id);
                     attachmentsDiv.innerHTML = data.attachments;
                     historyDiv.innerHTML = data.history;
 
-                    // --- ADD THIS BLOCK HERE ---
-                    // Dynamic Print Button Injection
-                    // Ensure you have a container for this button in your HTML structure, 
-                    // or append it to an existing container like 'detailsRow'
-                    
-                    // Option A: Append to the History Section (Easiest)
                     if (data.print_url) {
                         const printBtnHtml = `<div style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 15px; text-align: right;">
                             <a href="${data.print_url}" target="_blank" style="background: #003366; color: white; padding: 8px 15px; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 13px;">
@@ -554,7 +555,6 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
                         </div>`;
                         historyDiv.insertAdjacentHTML('beforeend', printBtnHtml);
                     }
-                    // ---------------------------
                 })
                 .catch(error => {
                     console.error('Error fetching details:', error);
@@ -565,34 +565,8 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
         }
     }
 
-    function exportSmartData() {
-        // 1. Get current values from the filter form
-        const search = document.querySelector('input[name="search"]').value;
-        const type = document.querySelector('select[name="type"]').value;
-        const barangay = document.querySelector('select[name="barangay"]').value;
-        const status = document.querySelector('select[name="status"]').value;
-        const dateFrom = document.querySelector('input[name="date_from"]').value;
-        const dateTo = document.querySelector('input[name="date_to"]').value;
-        const month = document.querySelector('select[name="month"]').value;
-        const year = document.querySelector('select[name="year"]').value;
-
-        // 2. Build the URL params
-        const params = new URLSearchParams({
-            search: search,
-            type: type,
-            barangay: barangay,
-            status: status,
-            date_from: dateFrom,
-            date_to: dateTo,
-            month: month,
-            year: year
-        });
-
-        // 3. Trigger the download
-        window.location.href = 'export_cases.php?' + params.toString();
-    }
-
-function submitNote(event, incidentId) {
+    // --- RESTORED FUNCTIONS ---
+    function submitNote(event, incidentId) {
         event.preventDefault(); // Stop page reload
         
         const input = document.getElementById('note-' + incidentId);
@@ -619,15 +593,13 @@ function submitNote(event, incidentId) {
         .then(response => response.json())
         .then(data => {
             if (data.status === 'success') {
-                // Clear input
                 input.value = '';
-                // Reset button
                 event.target.querySelector('button').innerText = originalBtnText;
                 event.target.querySelector('button').disabled = false;
                 
-                // Force reload of this specific details row to show new data
+                // Force reload of this specific details row
                 historyDiv.setAttribute('data-loaded', 'false'); 
-                toggleDetails(incidentId); // Re-open triggers re-fetch
+                toggleDetails(incidentId); 
             } else {
                 alert('Error: ' + data.message);
                 event.target.querySelector('button').disabled = false;
@@ -641,75 +613,116 @@ function submitNote(event, incidentId) {
 
     function toggleAdvancedFilters() {
         const grid = document.getElementById('advancedFilters');
-        if (grid.style.display === 'none') {
+        if (grid.style.display === 'none' || grid.style.display === '') {
             grid.style.display = 'grid';
         } else {
             grid.style.display = 'none';
         }
     }
 
-    // --- SECURE EXPORT LOGIC WITH OTP ---
-let exportParams = "";
+    // --- REAL OTP EXPORT LOGIC ---
+    let exportParams = "";
 
-function exportSmartData() {
-    // 1. Get current filter values
-    const search = document.querySelector('input[name="search"]').value;
-    const type = document.querySelector('select[name="type"]').value;
-    const barangay = document.querySelector('select[name="barangay"]').value;
-    const status = document.querySelector('select[name="status"]').value;
-    const dateFrom = document.querySelector('input[name="date_from"]').value;
-    const dateTo = document.querySelector('input[name="date_to"]').value;
-    const month = document.querySelector('select[name="month"]').value;
-    const year = document.querySelector('select[name="year"]').value;
+    function startExportProcess() {
+        const exportBtn = document.querySelector('.btn-export');
+        const originalText = exportBtn.innerText;
+        exportBtn.innerText = "Sending OTP Email...";
+        exportBtn.disabled = true;
+        exportBtn.style.opacity = "0.7";
 
-    exportParams = new URLSearchParams({
-        search: search, type: type, barangay: barangay, status: status,
-        date_from: dateFrom, date_to: dateTo, month: month, year: year
-    }).toString();
+        // 1. Grab all the current filters... (Keep your existing param code here)
+        const search = document.querySelector('input[name="search"]')?.value || "";
+        const type = document.querySelector('select[name="type"]')?.value || "";
+        const barangay = document.querySelector('select[name="barangay"]')?.value || "";
+        const status = document.querySelector('select[name="status"]')?.value || "";
+        const dateFrom = document.querySelector('input[name="date_from"]')?.value || "";
+        const dateTo = document.querySelector('input[name="date_to"]')?.value || "";
+        const month = document.querySelector('select[name="month"]')?.value || "";
+        const year = document.querySelector('select[name="year"]')?.value || "";
 
-    // 2. Trigger OTP Generation
-    fetch('api_otp.php?action=generate')
-        .then(res => res.json())
-        .then(data => {
-            if(data.success) {
-                // FOR THESIS DEFENSE: We alert the code so you can type it.
-                // In production, this fetch() would trigger an SMS API (like Semaphore).
-                alert("SYSTEM MESSAGE (Simulated SMS):\n\nYour CyberPablo Export Code is: " + data.code);
-                
-                // Show the modal
-                document.getElementById('otpModal').style.display = 'flex';
-                document.getElementById('otpInput').value = '';
-                document.getElementById('otpInput').focus();
-            }
-        });
-}
+        exportParams = new URLSearchParams({
+            search: search, type: type, barangay: barangay, status: status,
+            date_from: dateFrom, date_to: dateTo, month: month, year: year
+        }).toString();
 
-function closeOtpModal() {
-    document.getElementById('otpModal').style.display = 'none';
-}
+        // 2. Tell the API to generate and send the Email
+        fetch('api_otp.php?action=generate')
+            .then(response => response.json())
+            .then(data => {
+                // Reset button state
+                exportBtn.innerText = originalText;
+                exportBtn.disabled = false;
+                exportBtn.style.opacity = "1";
 
-function verifyAndExport() {
-    const code = document.getElementById('otpInput').value;
-    
-    // 3. Verify the Code
-    fetch('api_otp.php?action=verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'code=' + code
-    })
-    .then(res => res.json())
-    .then(data => {
-        if(data.success) {
-            alert("Verification Successful. Downloading data...");
-            closeOtpModal();
-            // 4. Actually download the file
-            window.location.href = 'export_cases.php?' + exportParams;
-        } else {
-            alert("Invalid Code. Export denied.");
+                if (data.success) {
+                    document.getElementById('otpExportModal').style.display = 'flex';
+                    document.getElementById('exportOtpInput').value = '';
+                    document.getElementById('otpErrorMsg').style.display = 'none';
+                    document.getElementById('exportOtpInput').focus();
+                } else {
+                    alert("Error: " + data.message);
+                }
+            })
+            .catch(error => {
+                exportBtn.innerText = originalText;
+                exportBtn.disabled = false;
+                exportBtn.style.opacity = "1";
+                console.error('Error:', error);
+                alert('Failed to trigger OTP. Check console.');
+            });
+    }
+
+    function verifyExportOtp() {
+        const code = document.getElementById('exportOtpInput').value.trim();
+        const btn = document.getElementById('btnVerifyOtp');
+        
+        if (code.length !== 6) {
+            showOtpError("Please enter a valid 6-digit code.");
+            return;
         }
-    });
-}
+
+        btn.innerHTML = "Verifying...";
+        btn.disabled = true;
+
+        // 3. Send the typed code to the API for verification
+        let formData = new FormData();
+        formData.append('code', code);
+
+        fetch('api_otp.php?action=verify', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            btn.innerHTML = "Verify & Export";
+            btn.disabled = false;
+
+            if (data.success) {
+                // 4. SUCCESS! Close modal and trigger the actual Excel download
+                closeOtpModal();
+                window.location.href = 'export_cases.php?' + exportParams;
+            } else {
+                showOtpError(data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            btn.innerHTML = "Verify & Export";
+            btn.disabled = false;
+            showOtpError("Verification failed. Try again.");
+        });
+    }
+
+    function closeOtpModal() {
+        document.getElementById('otpExportModal').style.display = 'none';
+    }
+
+    function showOtpError(msg) {
+        const errorEl = document.getElementById('otpErrorMsg');
+        errorEl.textContent = msg;
+        errorEl.style.display = 'block';
+    }
+   
 </script>
 </body>
 </html>
-                            

@@ -386,3 +386,109 @@ path.leaflet-interactive {
     color: #003366; 
     margin-bottom: 5px; 
 }
+
+/* Floating Map Legend */
+.map-legend-overlay {
+    position: absolute;
+    bottom: 30px;
+    right: 30px;
+    background: rgba(255, 255, 255, 0.95); /* Slight transparency for a modern look */
+    padding: 15px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    z-index: 1000; /* Ensures it floats above the Leaflet map */
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    border: 1px solid rgba(0,0,0,0.1);
+    min-width: 160px;
+}
+
+.map-legend-overlay h4 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    color: #003366;
+    border-bottom: 2px solid #eee;
+    padding-bottom: 5px;
+    font-weight: 700;
+}
+
+.map-legend-overlay .legend-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    font-size: 13px;
+    color: #444;
+    font-weight: 500;
+}
+
+.map-legend-overlay .legend-item:last-child {
+    margin-bottom: 0;
+}
+
+.map-legend-overlay .legend-color {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    margin-right: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+/* ACTIVITY FEED TIMELINE */
+        .activity-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            height: 100%;
+        }
+        .activity-feed {
+            max-height: 350px;
+            overflow-y: auto;
+            padding-right: 10px;
+            margin-top: 15px;
+        }
+        /* Custom Scrollbar for the feed */
+        .activity-feed::-webkit-scrollbar { width: 6px; }
+        .activity-feed::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+        
+        .activity-item {
+            border-left: 2px solid #e0e0e0;
+            padding-left: 15px;
+            padding-bottom: 20px;
+            position: relative;
+        }
+        .activity-item:last-child { border-left-color: transparent; padding-bottom: 0; }
+        
+        /* The Timeline Dot */
+        .activity-item::before {
+            content: '';
+            position: absolute;
+            left: -6px;
+            top: 2px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #003366; /* Default Blue */
+        }
+        
+        /* Color Code the Dots based on the Action Type */
+        .activity-item.type-import::before { background: #28a745; } /* Green */
+        .activity-item.type-update::before { background: #f39c12; } /* Orange */
+        .activity-item.type-evidence::before { background: #d94c23; } /* Red/Orange */
+        .activity-item.type-auth::before { background: #6c757d; } /* Gray */
+
+        .activity-time {
+            font-size: 11px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .activity-text {
+            font-size: 13px;
+            margin-top: 4px;
+            color: #333;
+            line-height: 1.4;
+        }
+        .activity-user {
+            font-weight: bold;
+            color: #003366;
+        }

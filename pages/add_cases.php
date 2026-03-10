@@ -219,13 +219,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <label for="incident_type" class="required">Incident Type</label>
                     <select id="incident_type" name="incident_type" required>
                         <option value="">Select a type...</option>
-                        <option value="Phishing">Phishing</option>
-                        <option value="Online Fraud">Online Fraud</option>
-                        <option value="Identity Theft">Identity Theft</option>
-                        <option value="Cyber Harassment">Cyber Harassment</option>
-                        <option value="Sextortion">Sextortion</option>
-                        <option value="Online Libel">Online Libel</option>
-                        <option value="Hacking">Hacking</option>
+                        <option value="Republic Act No. 10175 (Phishing)">Phishing</option>
+                        <option value="Republic Act No. 10175 (Online Fraud)">Online Fraud</option>
+                        <option value="Republic Act No. 10175 (Identity Theft)">Identity Theft</option>
+                        <option value="Republic Act No. 10175 (Cyber Harassment)">Cyber Harassment</option>
+                        <option value="Republic Act No. 10175 (Sextortion)">Sextortion</option>
+                        <option value="Republic Act No. 10175 (Online Libel)">Online Libel</option>
+                        <option value="Republic Act No. 10175 (Hacking)">Hacking</option>
                         <option value="Others">Others</option>
                     </select>
 
@@ -243,7 +243,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
 
                 <div class="form-group">
-                    <label for="incident_date" class="required">Incident Date</label>
+                    <label for="incident_date" class="required">Incident Date 
+                        <span id="dayOfWeekDisplay" style="color: #003366; font-weight: normal; margin-left: 8px;"></span>
+                    </label>
                     <input type="date" id="incident_date" name="incident_date" required>
                 </div>
                 
@@ -381,6 +383,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     otherInput.value = '';
                 }
             });
+
+            // QoL FEATURE: Dynamic Day of Week Display
+            const dateInput = document.getElementById('incident_date');
+            const dayDisplay = document.getElementById('dayOfWeekDisplay');
+            
+            function updateDayOfWeek() {
+                if(dateInput.value) {
+                    const dateObj = new Date(dateInput.value);
+                    // Use UTC to prevent local timezone shifts from showing the wrong day
+                    const dayName = dateObj.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'long' });
+                    dayDisplay.textContent = `(${dayName})`;
+                } else {
+                    dayDisplay.textContent = '';
+                }
+            }
+            
+            dateInput.addEventListener('change', updateDayOfWeek);
+            
+            // Call it once immediately to display the day for the default today's date
+            updateDayOfWeek();
 
             // 3. QoL FEATURE: Default Dates to Today
             const today = new Date();

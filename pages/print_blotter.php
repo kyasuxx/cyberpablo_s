@@ -62,60 +62,7 @@ $narrative .= "<strong>DETAILS OF INCIDENT:</strong><br>" . nl2br($details);
 <head>
     <meta charset="UTF-8">
     <title>Blotter Entry No. <?= $case['case_no'] ?></title>
-    <style>
-        /* PRINT SETTINGS: Ensure A4 sizing */
-        @page { size: A4; margin: 2.5cm; }
-        body { 
-            font-family: 'Times New Roman', serif; /* Standard for legal docs */
-            font-size: 12pt; 
-            line-height: 1.5; 
-            color: #000;
-            background: #fff;
-        }
-
-        /* HEADER: Standard PNP Hierarchy */
-        .header { text-align: center; margin-bottom: 40px; }
-        .header p { margin: 0; font-size: 11pt; }
-        .header h3 { margin: 5px 0 0 0; font-size: 14pt; font-weight: bold; }
-        .header h4 { margin: 0; font-size: 12pt; font-weight: bold; }
-        
-        .title { text-align: center; font-weight: bold; text-decoration: underline; font-size: 16pt; margin: 30px 0; }
-
-        /* DATA BOX: The Grid at the top */
-        .meta-box { width: 100%; border-collapse: collapse; margin-bottom: 25px; }
-        .meta-box td { padding: 5px; vertical-align: top; }
-        .label { width: 180px; font-weight: bold; }
-
-        /* NARRATIVE: Justified text for professional look */
-        .narrative { text-align: justify; text-justify: inter-word; margin-bottom: 60px; }
-
-        /* SIGNATURES */
-        .signatures { display: flex; justify-content: space-between; margin-top: 50px; }
-        .sig-block { width: 45%; text-align: center; }
-        .line { border-top: 1px solid #000; margin-top: 50px; margin-bottom: 5px; }
-
-        /* SECURITY FOOTER */
-        .footer { 
-            position: fixed; bottom: 0; left: 0; right: 0; 
-            font-size: 9pt; color: #555; text-align: center; 
-            border-top: 1px dashed #ccc; padding-top: 10px;
-        }
-
-        /* HIDE UI ELEMENTS WHEN PRINTING */
-        @media print {
-            .no-print { display: none !important; }
-            body { padding: 0; margin: 0; }
-        }
-        
-        .print-btn {
-            position: fixed; top: 20px; right: 20px; 
-            padding: 12px 25px; background: #003366; color: white; 
-            border: none; border-radius: 5px; cursor: pointer; 
-            font-weight: bold; font-family: sans-serif;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-        }
-        .print-btn:hover { background: #002244; }
-    </style>
+    <link rel="stylesheet" href="../assets/css/print_blotter.css">
 </head>
 <body>
 

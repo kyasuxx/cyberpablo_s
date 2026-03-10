@@ -243,3 +243,13 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        .barangay-tooltip {
+            background: #003366;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+            padding: 4px 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }

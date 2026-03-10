@@ -28,3 +28,10 @@
 <a href="link_analysis.php" class="nav-item <?= $current_page == 'link_analysis.php' ? 'active' : '' ?>">
             Intelligence
         </a>
+
+<li>
+                        <a href="admin_panel.php" class="<?= $current_page == 'admin_panel.php' ? 'active' : '' ?>">
+                            <span class="menu-title"><i class="fa-solid fa-house"></i>Dashboard Home</span>
+                            <!-- <span class="menu-desc">Return to central panel</span> -->
+                        </a>
+                    </li>

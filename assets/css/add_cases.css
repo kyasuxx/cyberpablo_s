@@ -1,115 +1,301 @@
-/* General Layout & Typography */
+/* --- Fonts --- */
+@import url('https://fonts.googleapis.com/css2?family=Merriweather:wght@700&family=Inter:wght@500;600;700&display=swap');
+
+/* --- Variables --- */
+:root {
+    --bg-page: #f4f7f9;
+    --bg-card: #ffffff;
+    --text-main: #334155;
+    --text-muted: #64748b;
+    --text-placeholder: #94a3b8;
+    --color-primary-blue: #2c4e9e; /* Header text color */
+    --color-primary-blue-light: #4c6fc4; /* Header underline color */
+    --color-success: #16a34a; /* Green save button */
+    --color-success-hover: #15803d;
+    --color-danger: #ef4444; /* Asterisk red */
+    --border-input: #cbd5e1;
+    --border-input-focus: #3b82f6;
+    --border-divider: #e2e8f0;
+    --bg-input-readonly: #f8fafc;
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-serif: 'Merriweather', Georgia, serif;
+}
+
+/* --- General Layout --- */
 body { 
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
-    background: #f0f2f5; 
+    font-family: var(--font-sans); 
+    background: var(--bg-page); 
+    margin: 0; 
+    color: var(--text-main);
+}
+
+/* --- Form Container --- */
+.container { 
+    max-width: 1000px; 
+    margin: 40px auto; 
+    /* Increased bottom padding so the floating button doesn't hide the last field */
+    padding: 40px 50px 80px 50px; 
+    background: var(--bg-card); 
+    border-radius: 12px; 
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04); 
+}
+
+/* --- Grid System --- */
+.form-grid { 
+    display: grid; 
+    grid-template-columns: repeat(3, 1fr); 
+    gap: 20px 24px; 
+}
+
+/* --- Section Headers --- */
+.form-section { 
+    grid-column: 1 / -1; 
+    margin-top: 30px; 
+    margin-bottom: 5px; 
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-divider);
+    position: relative;
+}
+
+.form-section:first-child {
+    margin-top: 0;
+}
+
+/* Blue underline simulation from Design 1 */
+.form-section::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background-color: var(--color-primary-blue-light);
+    opacity: 0.15; /* Subtle full-width underline */
+}
+
+.form-section h2 { 
+    font-family: var(--font-serif);
+    color: var(--color-primary-blue); 
+    font-size: 1.4rem; 
     margin: 0; 
 }
 
-/* Header & Navigation */
-.header { 
-    background: linear-gradient(135deg, #003366 0%, #004d99 100%); 
-    color: white; 
-    padding: 15px 30px; 
+/* --- Form Groups & Labels --- */
+.form-group { 
     display: flex; 
-    justify-content: space-between; 
-    align-items: center; 
-    box-shadow: 0 2px 10px rgba(0,0,0,0.2); 
+    flex-direction: column;
+    width: 100%;
 }
 
-.header h1 { font-size: 24px; margin: 0; }
-
-.nav-links a { 
-    color: #ffcc00; 
-    text-decoration: none; 
-    font-weight: 500; 
-    margin: 0 10px; 
-}
-
-.nav-links a.logout { 
-    background: #d32f2f; 
-    color: white; 
-    padding: 8px 20px; 
-    border-radius: 6px; 
-}
-
-/* Form Container & Grid */
-.container { 
-    max-width: 1200px; 
-    margin: 30px auto; 
-    padding: 30px; 
-    background: #fff; 
-    border-radius: 12px; 
-    box-shadow: 0 4px 20px rgba(0,0,0,0.08); 
-}
-
-.form-grid { 
-    display: grid; 
-    grid-template-columns: 1fr 1fr 1fr; 
-    gap: 25px; 
-}
-
-.form-section { 
-    border-bottom: 2px solid #003366; 
-    padding-bottom: 10px; 
-    margin: 30px 0 20px 0; 
+.form-group.full-width { 
     grid-column: 1 / -1; 
 }
 
-.form-section h2 { color: #003366; margin: 0; }
-
-/* Input Styling */
-.form-group { display: flex; flex-direction: column; }
-.form-group.full-width { grid-column: 1 / -1; }
-.form-group label { font-weight: 600; margin-bottom: 8px; font-size: 14px; color: #333; }
-
-.form-group input,
-.form-group select,
-.form-group textarea {
-    padding: 10px;
-    font-size: 14px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    font-family: inherit;
+.form-group label { 
+    font-size: 0.75rem; 
+    font-weight: 700; 
+    color: var(--text-muted); 
+    text-transform: uppercase; 
+    letter-spacing: 0.5px;
+    margin-bottom: 8px; 
 }
 
-.form-group textarea { resize: vertical; min-height: 80px; }
-.form-group input[type="file"] { padding: 5px; }
+.form-group label.required::after { 
+    content: ' *'; 
+    color: var(--color-danger); 
+}
 
-/* Special Input States */
-.form-group label.required::after { content: ' *'; color: #d32f2f; }
+/* --- Inputs, Selects, and Textareas --- */
+.form-group input[type="text"],
+.form-group input[type="number"],
+.form-group input[type="date"],
+.form-group input[type="datetime-local"],
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 10px 14px;
+    font-size: 0.9rem;
+    font-family: var(--font-sans);
+    color: var(--text-main);
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-input);
+    border-radius: 6px;
+    box-sizing: border-box;
+    transition: all 0.2s ease;
+}
 
+.form-group input::placeholder,
+.form-group textarea::placeholder {
+    color: var(--text-placeholder);
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: var(--border-input-focus);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.form-group textarea { 
+    resize: vertical; 
+    min-height: 100px; 
+}
+
+/* Readonly Input Styling */
 .readonly-input {
-    background: #eee;
+    background-color: var(--bg-input-readonly) !important;
+    color: var(--text-muted) !important;
     cursor: not-allowed;
+    border-color: var(--border-divider) !important;
 }
 
 #other_specify {
     display: none; 
     margin-top: 10px; 
-    border-color: #003366;
 }
 
-/* Buttons */
-.btn-submit {
-    grid-column: 3 / -1;
-    background: #28a745;
-    color: white;
-    font-size: 16px;
-    font-weight: 600;
-    padding: 12px;
-    border: none;
+/* --- Choices.js Overrides (To match custom inputs) --- */
+/* --- Choices.js Overrides --- */
+/* --- Choices.js Overrides --- */
+.choices {
+    margin-bottom: 0;
+    width: 100%; /* Ensures wrapper doesn't exceed grid */
+    position: relative;
+}
+
+/* 1. Default State */
+.choices__inner {
+    width: 100%;
+    box-sizing: border-box; /* THIS FIXES THE CUT-OFF RIGHT BORDER */
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-input);
     border-radius: 6px;
-    cursor: pointer;
-    transition: background 0.3s;
+    padding: 5.5px 14px;
+    min-height: auto;
+    font-size: 0.9rem;
+    color: var(--text-main);
+    box-shadow: none;
+    transition: all 0.2s ease;
 }
 
-.btn-submit:hover { background: #218838; }
+.choices[data-type*="select-one"] .choices__inner {
+    padding-bottom: 5.5px;
+}
 
-/* Choices.js Customization */
-.choices__inner { background: #fff; border-radius: 6px; padding: 6px 10px; }
-.choices__list--dropdown { border-radius: 6px; }
+/* 2. Focused (but not open) state */
+.choices.is-focused .choices__inner {
+    border-color: var(--border-input-focus);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); 
+}
 
-/* Messages */
-.message { padding: 15px; border-radius: 6px; margin-bottom: 20px; font-weight: 500; }
-.message.success { background: #d4edda; color: #155724; }
-.message.error { background: #f8d7da; color: #721c24; }
+/* 3. OPEN state (This fixes the "broken" look) */
+.choices.is-open .choices__inner {
+    border-color: var(--border-input-focus);
+    /* Remove bottom border and bottom radius so it merges with the list */
+    border-bottom-color: transparent; 
+    border-radius: 6px 6px 0 0; 
+    /* Keep the glow, but it will only naturally show on top/sides now */
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); 
+}
+
+/* 4. The Dropdown List */
+.choices__list--dropdown {
+    border: 1px solid var(--border-input-focus);
+    border-top: none; /* Connects flush to the input above */
+    border-radius: 0 0 6px 6px; /* Rounded only at the bottom */
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1); /* Adds depth below the menu */
+    margin-top: 0; /* Ensures it touches the input exactly */
+    z-index: 10;
+}
+
+/* 5. Caret (Triangle) Default - Pointing Down */
+.choices[data-type*="select-one"]::after {
+    border-color: #334155 transparent transparent transparent; 
+    border-width: 5px 5px 0 5px;
+    right: 14px;
+    margin-top: -2px;
+}
+
+/* 6. Caret (Triangle) Open - Pointing Up */
+.choices[data-type*="select-one"].is-open::after {
+    border-color: transparent transparent #334155 transparent; 
+    border-width: 0 5px 5px 5px; /* Flips the triangle physically */
+    margin-top: -2px; 
+}
+
+/* --- File Upload Area (Evidence) --- */
+.form-group input[type="file"] {
+    border: 2px dashed var(--border-input);
+    background-color: var(--bg-input-readonly);
+    padding: 35px 20px;
+    text-align: center;
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: all 0.2s;
+    font-size: 0.9rem;
+}
+
+.form-group input[type="file"]:hover {
+    border-color: #94a3b8;
+    background-color: #f1f5f9;
+}
+
+.form-group input[type="file"]::file-selector-button {
+    background-color: #e2e8f0;
+    color: var(--text-main);
+    border: none;
+    padding: 8px 16px;
+    border-radius: 20px; /* Rounded button inside dropzone */
+    margin-right: 15px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.2s;
+    font-family: var(--font-sans);
+}
+
+.form-group input[type="file"]::file-selector-button:hover {
+    background-color: #cbd5e1;
+}
+
+/* --- Submit Button (Bottom Right) --- */
+.btn-submit {
+    /* Make the button stick to the screen */
+    position: fixed;
+    bottom: 40px;
+    right: 40px;
+    z-index: 999; /* Ensures it stays on top of all other elements */
+    
+    background: var(--color-success);
+    color: white;
+    font-size: 0.95rem;
+    font-weight: 600;
+    font-family: var(--font-sans);
+    padding: 16px 32px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    
+    /* Adds a pronounced drop shadow to sell the "floating" effect */
+    box-shadow: 0 8px 24px rgba(22, 163, 74, 0.35); 
+}
+
+.btn-submit:hover { 
+    background: var(--color-success-hover); 
+    box-shadow: 0 10px 28px rgba(22, 163, 74, 0.5);
+    transform: translateY(-2px); /* Slight lift effect on hover */
+}
+
+/* --- Messages --- */
+.message { 
+    padding: 15px 20px; 
+    border-radius: 6px; 
+    margin-bottom: 24px; 
+    font-weight: 500; 
+    font-size: 0.95rem;
+}
+.message.success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0;}
+.message.error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca;}

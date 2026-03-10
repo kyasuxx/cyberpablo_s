@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once 'config/connection.php';
+require_once 'spatial_helper.php';
 
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
@@ -14,10 +15,10 @@ $upload_message = '';
 $upload_status = '';
 $preview_data = [];
 $errors = [];
+$duplicate_count_preview = 0;
 
-// Handle file upload
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
-    require_once '../vendor/autoload.php'; // PhpSpreadsheet
+    require_once '../vendor/autoload.php';
 
     $file = $_FILES['excel_file'];
     $allowed = ['xlsx', 'xls', 'csv'];
@@ -35,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
             $sheet = $spreadsheet->getActiveSheet();
             $rows = $sheet->toArray();
 
-            // Validate headers
+            // Validate headers (Added Latitude and Longitude aliases!)
             $header_aliases = [
                 'case_no' => ['case no', 'case number'],
                 'incident_type' => ['incident type', 'type of incident'],
@@ -60,16 +61,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
                 'returned_to' => ['returned to'],
                 'returned_date' => ['returned date'],
                 'evidence_notes' => ['evidence notes', 'notes', 'evidence'],
-                'attachments' => ['attachments', 'files', 'filenames', 'attachment filenames'] // <-- FIX 1: UNCOMMENTED
+                'latitude' => ['latitude', 'lat'],
+                'longitude' => ['longitude', 'lng', 'long'],
+                'attachments' => ['attachments', 'files', 'filenames', 'attachment filenames']
             ];
 
-            // Normalize headers
             $headers_raw = array_map('trim', $rows[0]);
             $headers_normalized = [];
             foreach ($headers_raw as $header) {
                 $normalized = strtolower($header);
-                $normalized = str_replace(['_', '-', '.', '/', '\\'], ' ', $normalized); // Added / and \
-                $normalized = preg_replace('/\s+/', ' ', $normalized); // Normalize multiple spaces to one
+                $normalized = str_replace(['_', '-', '.', '/', '\\'], ' ', $normalized);
+                $normalized = preg_replace('/\s+/', ' ', $normalized);
                 $normalized = trim($normalized);
 
                 $matched_key = null;
@@ -84,7 +86,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
 
             $headers = $headers_normalized;
 
-            // Validate all required headers exist
             $required_keys = ['case_no', 'incident_type', 'barangay', 'incident_date', 'status'];
             $missing_headers = [];
             foreach ($required_keys as $r_key) {
@@ -97,19 +98,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
                 $upload_status = 'error';
                 $upload_message = 'Missing required columns: ' . implode(', ', $missing_headers);
             } else {
-                // Preview first 10 rows
                 $preview_count = min(10, count($rows) - 1);
                 for ($i = 1; $i <= $preview_count; $i++) {
-                    // Prevent row mismatch
                     if (count($headers) != count($rows[$i])) {
-                        $errors[] = "Row " . ($i + 1) . ": Column count mismatch. Expected " . count($headers) . " but got " . count($rows[$i]) . ". Skipping row.";
+                        $errors[] = "Row " . ($i + 1) . ": Column count mismatch. Skipping row.";
                         continue;
                     }
                     $row_data = @array_combine($headers, $rows[$i]);
                     if (!$row_data) continue;
 
-                    // Validate barangay exists
+                    // --- 1. SPATIAL GEOFENCING AUTO-CORRECTOR (PREVIEW PHASE) ---
                     $barangay_input = trim($row_data['barangay']);
+                    $csv_lat = !empty($row_data['latitude']) ? (float)$row_data['latitude'] : 0;
+                    $csv_lng = !empty($row_data['longitude']) ? (float)$row_data['longitude'] : 0;
+
+                    if ($csv_lat !== 0 && $csv_lng !== 0) {
+                        $geojson_path = '../api/san_pablo_barangays.json'; 
+                        $true_barangay = getTrueBarangayFromGeoJSON($csv_lat, $csv_lng, $geojson_path);
+                        
+                        if ($true_barangay && strtolower($true_barangay) !== strtolower(preg_replace('/^Brgy\.?\s*/i', '', $barangay_input))) {
+                            $barangay_input = $true_barangay;
+                            $row_data['barangay'] = "Brgy. " . $true_barangay; // Update preview to show the corrected name
+                        }
+                    }
+
                     $clean = preg_replace('/^Brgy\.?\s*/i', '', $barangay_input);
 
                     $brgy_check = $conn->prepare("
@@ -126,18 +138,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
                         $errors[] = "Row $i: Barangay '{$row_data['barangay']}' not found in database";
                     }
 
-                    // Check duplicate case number (but allow updates)
                     $dup_check = $conn->prepare("SELECT case_no FROM incidents WHERE case_no = ?");
                     $dup_check->bind_param("s", $row_data['case_no']);
                     $dup_check->execute();
 
                     if ($dup_check->get_result()->num_rows > 0) {
                         $row_data['existing_case'] = true;
+                        $duplicate_count_preview++;
                     } else {
                         $row_data['existing_case'] = false;
                     }
+                    $dup_check->close();
 
-                    // FIX 2: Add "Not Listed" for preview
                     $row_data['incident_type'] = trim($row_data['incident_type'] ?? '');
                     if ($row_data['incident_type'] === '') {
                         $row_data['incident_type'] = 'Not Listed';
@@ -147,10 +159,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
 
                 if (empty($errors)) {
                     $upload_status = 'success';
-                    $upload_message = 'File validated successfully. ' . (count($rows) - 1) . ' rows ready to import.';
+                    $upload_message = 'File validated successfully. ' . (count($rows) - 1) . ' rows ready to process.';
+                    if ($duplicate_count_preview > 0) {
+                        $upload_status = 'warning';
+                        $upload_message .= ' Note: Found ' . $duplicate_count_preview . ' duplicate(s) in preview that will be automatically skipped.';
+                    }
                 } else {
                     $upload_status = 'warning';
-                    $upload_message = 'Some rows have warnings (e.g., missing barangays). Duplicates will be updated automatically.';
+                    $upload_message = 'Some rows have errors. Valid rows will be imported. Duplicates will be skipped.';
                 }
 
                 $_SESSION['pending_import_rows'] = $rows;
@@ -162,7 +178,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
     }
 }
 
-// Handle final import confirmation
 if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) {
     $rows = $_SESSION['pending_import_rows'];
     $header_aliases = [
@@ -189,7 +204,9 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
         'returned_to' => ['returned to'],
         'returned_date' => ['returned date'],
         'evidence_notes' => ['evidence notes', 'notes', 'evidence'],
-        'attachments' => ['attachments', 'files', 'filenames', 'attachment filenames'] // <-- FIX 1: UNCOMMENTED
+        'latitude' => ['latitude', 'lat'],
+        'longitude' => ['longitude', 'lng', 'long'],
+        'attachments' => ['attachments', 'files', 'filenames', 'attachment filenames']
     ];
 
     $headers_raw = array_map('trim', $rows[0]);
@@ -210,34 +227,50 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
         $headers[] = $matched_key ?? str_replace(' ', '_', $normalized);
     }
 
-
     $imported = 0;
     $skipped = 0;
 
     $conn->begin_transaction();
 
     try {
-        // Helper function to clean dates during import
-            function safeImportDate($dateString, $format = 'Y-m-d') {
-                if (empty($dateString) || str_contains($dateString, '0000-00-00') || str_contains($dateString, '0001')) {
-                    return null; // Set to NULL if it's empty, a zero date, or the bad -0001 date
-                }
-                $timestamp = strtotime($dateString);
-                if ($timestamp === false || $timestamp <= 0) {
-                    return null; // Set to NULL if it's an invalid date (like "N/A" or "test")
-                }
-                return date($format, $timestamp);
-            }
+        function safeImportDate($dateString, $format = 'Y-m-d') {
+            if (empty($dateString) || str_contains($dateString, '0000-00-00') || str_contains($dateString, '0001')) return null;
+            $timestamp = strtotime($dateString);
+            if ($timestamp === false || $timestamp <= 0) return null;
+            return date($format, $timestamp);
+        }
+
         for ($i = 1; $i < count($rows); $i++) {
-            // Prevent row mismatch
-            if (count($headers) != count($rows[$i])) {
-                continue; // Skip mismatched row
-            }
+            if (count($headers) != count($rows[$i])) continue; 
+            
             $row_data = @array_combine($headers, $rows[$i]);
             if (!$row_data) continue;
 
-            // Get barangay ID
+            $case_no = trim($row_data['case_no']);
+            $dup_check_stmt = $conn->prepare("SELECT id FROM incidents WHERE case_no = ?");
+            $dup_check_stmt->bind_param("s", $case_no);
+            $dup_check_stmt->execute();
+            if ($dup_check_stmt->get_result()->num_rows > 0) {
+                $skipped++;
+                $dup_check_stmt->close();
+                continue; 
+            }
+            $dup_check_stmt->close();
+
+            // --- 2. SPATIAL GEOFENCING AUTO-CORRECTOR (IMPORT PHASE) ---
             $barangay_input = trim($row_data['barangay']);
+            $csv_lat = !empty($row_data['latitude']) ? (float)$row_data['latitude'] : 0;
+            $csv_lng = !empty($row_data['longitude']) ? (float)$row_data['longitude'] : 0;
+
+            if ($csv_lat !== 0 && $csv_lng !== 0) {
+                $geojson_path = '../api/san_pablo_barangays.json'; 
+                $true_barangay = getTrueBarangayFromGeoJSON($csv_lat, $csv_lng, $geojson_path);
+                
+                if ($true_barangay && strtolower($true_barangay) !== strtolower(preg_replace('/^Brgy\.?\s*/i', '', $barangay_input))) {
+                    $barangay_input = $true_barangay;
+                }
+            }
+
             $clean = preg_replace('/^Brgy\.?\s*/i', '', $barangay_input);
 
             $brgy_stmt = $conn->prepare("
@@ -255,6 +288,10 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
                 continue;
             }
 
+            // CRITICAL FIX: If CSV provides coordinates, use them. Otherwise, default to Barangay center.
+            $final_lat = ($csv_lat !== 0) ? $csv_lat : $brgy['lat'];
+            $final_lng = ($csv_lng !== 0) ? $csv_lng : $brgy['lng'];
+
             $prosecutor_id = null;
             if (!empty($row_data['prosecutor'])) {
                 $p = trim($row_data['prosecutor']);
@@ -263,7 +300,7 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
                 $pcheck->execute();
                 $pid = $pcheck->get_result()->fetch_row()[0] ?? null;
 
-                if (!$pid && !empty($p)) { // Only insert if not empty
+                if (!$pid && !empty($p)) { 
                     $insert_p = $conn->prepare("INSERT INTO prosecutors (full_name) VALUES (?)");
                     $insert_p->bind_param("s", $p);
                     $insert_p->execute();
@@ -286,45 +323,9 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
                     received_by, received_date, returned_to, returned_date,
                     evidence_notes
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE 
-                    incident_type = VALUES(incident_type),
-                    barangay = VALUES(barangay),
-                    barangay_id = VALUES(barangay_id),
-                    lat = VALUES(lat), 
-                    lng = VALUES(lng),
-                    incident_date = VALUES(incident_date),
-                    modus_operandi = VALUES(modus_operandi),
-                    status = VALUES(status),
-                    accused = VALUES(accused),
-                    accused_address = VALUES(accused_address),
-                    accused_contact = VALUES(accused_contact),
-                    complainant = VALUES(complainant),
-                    complainant_address = VALUES(complainant_address),
-                    complainant_contact = VALUES(complainant_contact),
-                    nps_docket = VALUES(nps_docket),
-                    offense_crime = VALUES(offense_crime),
-                    date_committed = VALUES(date_committed),
-                    date_filed = VALUES(date_filed),
-                    bail_recommended = VALUES(bail_recommended),
-                    prosecutor_id = VALUES(prosecutor_id),
-                    received_by = VALUES(received_by),
-                    received_date = VALUES(received_date),
-                    returned_to = VALUES(returned_to),
-                    returned_date = VALUES(returned_date),
-                    evidence_notes = VALUES(evidence_notes),
-                    updated_at = NOW()
             ");
 
-            // Handle nullable date fields
-// Handle nullable date fields
-
-            
-
-            $incident_date = safeImportDate($row_data['incident_date'] ?? '', 'Y-m-d');
-            if ($incident_date === null) {
-                // If the date is invalid or blank, default to today's date to satisfy NOT NULL
-                $incident_date = date('Y-m-d'); 
-            }
+            $incident_date = safeImportDate($row_data['incident_date'] ?? '', 'Y-m-d') ?? date('Y-m-d');
             $date_committed = safeImportDate($row_data['date_committed'] ?? '', 'Y-m-d H:i:s');
             $date_filed = safeImportDate($row_data['date_filed'] ?? '', 'Y-m-d');
             $received_date = safeImportDate($row_data['received_date'] ?? '', 'Y-m-d H:i:s');
@@ -332,7 +333,6 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
             $bail = (!empty($row_data['bail_recommended']) && is_numeric($row_data['bail_recommended'])) 
                 ? floatval($row_data['bail_recommended']) : null;
 
-            // Handle optional text fields - MUST BE VARIABLES for bind_param
             $accused = $row_data['accused'] ?? '';
             $accused_address = $row_data['accused_address'] ?? '';
             $accused_contact = $row_data['accused_contact'] ?? '';
@@ -340,13 +340,17 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
             $complainant_address = $row_data['complainant_address'] ?? '';
             $complainant_contact = $row_data['complainant_contact'] ?? '';
             
-            // FIX 2: Add "Not Listed" for import
             $incident_type = trim($row_data['incident_type'] ?? '');
-            if ($incident_type === '') {
+            
+            $ra_crimes = ['Phishing', 'Online Fraud', 'Identity Theft', 'Cyber Harassment', 'Sextortion', 'Online Libel', 'Hacking'];
+            if (in_array(ucwords(strtolower($incident_type)), $ra_crimes)) {
+                $incident_type = 'Republic Act No. 10175 (' . ucwords(strtolower($incident_type)) . ')';
+            } elseif ($incident_type === '') {
                 $incident_type = 'Not Listed';
             }
+
             $modus = $row_data['modus_operandi'] ?? '';
-            $status = $row_data['status'] ?? 'Open'; // Default to Open
+            $status = $row_data['status'] ?? 'Open'; 
             $nps_docket = $row_data['nps_docket'] ?? '';
             $offense_crime = $row_data['offense_crime'] ?? '';
             $received_by = $row_data['received_by'] ?? '';
@@ -355,12 +359,12 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
 
             $insert->bind_param(
                 "ssisddssssssssssssssdisssss",
-                $row_data['case_no'],
+                $case_no,
                 $incident_type,
                 $brgy['official_name'],
                 $brgy['id'],
-                $brgy['lat'],
-                $brgy['lng'],
+                $final_lat, // Uses the corrected CSV coordinates
+                $final_lng, // Uses the corrected CSV coordinates
                 $incident_date,
                 $modus,
                 $victim_hash,
@@ -386,102 +390,53 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
 
             if ($insert->execute()) {
                 $imported++;
-
-                // --- START: NEW ATTACHMENT CODE ---
-                
-                // 1. Get the incident_id
                 $incident_id = $conn->insert_id;
-                if ($incident_id == 0) {
-                    // It was an UPDATE, so we must fetch the ID
-                    $id_stmt = $conn->prepare("SELECT id FROM incidents WHERE case_no = ?");
-                    $id_stmt->bind_param("s", $row_data['case_no']);
-                    $id_stmt->execute();
-                    $incident_id = $id_stmt->get_result()->fetch_row()[0];
-                }
-                
-            // 2. Process the 'attachments' column if it's not empty
-                if ($incident_id && !empty($row_data['attachments'])) {
-                    $case_no = $row_data['case_no'];
 
-                    // FIX: Build a reliable server path
+                if ($incident_id && !empty($row_data['attachments'])) {
                     $server_path_dir = $_SERVER['DOCUMENT_ROOT'] . "/cyberpablo/uploads/cases/" . $case_no . "/";
                     $server_path_dir = str_replace('/', DIRECTORY_SEPARATOR, $server_path_dir);
-
-                    // This is the WEB path (what's saved in the DB and used in <a> tags)
                     $web_path_dir = "../uploads/cases/" . $case_no . "/";
 
-                    // Create the directory if it doesn't exist using the SERVER path
                     if (!is_dir($server_path_dir)) {
                         mkdir($server_path_dir, 0755, true);
                     }
 
-                    // Split filenames by comma
                     $filenames_from_excel = explode(',', $row_data['attachments']);
 
                     foreach ($filenames_from_excel as $original_filename) {
                         $original_filename = trim($original_filename);
                         if (empty($original_filename)) continue;
 
-                        // --- THIS IS THE NEW ROBUST LOGIC ---
-                        
-                        $file_to_add_server_path = null;
-                        $file_to_add_web_path = null;
                         $file_to_add_filename = null;
+                        $file_to_add_web_path = null;
                         
-                        // Scan the directory for all files
                         $all_files_in_dir = glob($server_path_dir . "*");
 
                         if ($all_files_in_dir) {
                             foreach ($all_files_in_dir as $found_filepath) {
-                                // Make sure it's a file, not a directory
-                                if (!is_file($found_filepath)) {
-                                    continue;
-                                }
-
+                                if (!is_file($found_filepath)) continue;
                                 $found_filename = basename($found_filepath);
 
-                                // Check 1: Is it an exact match?
-                                if ($found_filename === $original_filename) {
-                                    $file_to_add_server_path = $found_filepath;
+                                if ($found_filename === $original_filename || str_ends_with($found_filename, "_" . $original_filename)) {
                                     $file_to_add_filename = $found_filename;
                                     $file_to_add_web_path = $web_path_dir . $found_filename;
-                                    break; // Found it, stop looking
-                                }
-
-                                // Check 2: Is it a renamed match? (e.g., 12345_original.jpg)
-                                // This is the logic that handles your observation
-                                if (str_ends_with($found_filename, "_" . $original_filename)) {
-                                    $file_to_add_server_path = $found_filepath;
-                                    $file_to_add_filename = $found_filename;
-                                    $file_to_add_web_path = $web_path_dir . $found_filename;
-                                    break; // Found it, stop looking
+                                    break; 
                                 }
                             }
                         }
 
-                        // If we found a file (either original OR renamed), add it to the database
                         if ($file_to_add_filename) {
-                            
-                            // PREVENT DUPLICATES: Check if this file is already linked
                             $dup_att_stmt = $conn->prepare("SELECT id FROM attachments WHERE incident_id = ? AND file_name = ?");
                             $dup_att_stmt->bind_param("is", $incident_id, $file_to_add_filename); 
                             $dup_att_stmt->execute();
-                            $dup_result = $dup_att_stmt->get_result();
-
-                            if ($dup_result->num_rows == 0) {
-                                // File exists but isn't in DB, so insert the record
-                                $att_stmt = $conn->prepare(
-                                    "INSERT INTO attachments (incident_id, file_name, file_path, uploaded_by) 
-                                     VALUES (?, ?, ?, ?)"
-                                );
-                                // Use the *actual* filename and web path we found
+                            if ($dup_att_stmt->get_result()->num_rows == 0) {
+                                $att_stmt = $conn->prepare("INSERT INTO attachments (incident_id, file_name, file_path, uploaded_by) VALUES (?, ?, ?, ?)");
                                 $att_stmt->bind_param("issi", $incident_id, $file_to_add_filename, $file_to_add_web_path, $_SESSION['user_id']); 
                                 $att_stmt->execute();
                                 $att_stmt->close();
                             }
                             $dup_att_stmt->close();
                         }
-                        // --- END OF NEW LOGIC ---
                     }
                 }
             } else {
@@ -496,7 +451,7 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
         $audit->execute();
 
         $upload_status = 'success';
-        $upload_message = "Import complete! $imported records imported, $skipped skipped.";
+        $upload_message = "Import complete! $imported new records imported, $skipped skipped (duplicates/errors).";
 
         unset($_SESSION['pending_import_rows']);
     } catch (Exception $e) {
@@ -541,7 +496,7 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
             <h2>Upload Excel File</h2>
             <p class="description-text">
                 Upload an Excel (.xlsx, .xls) or CSV file containing cybercrime incident data.
-                The file will be validated before import.
+                Duplicates will be safely skipped. GPS coordinates will auto-correct incorrect Barangay entries.
             </p>
 
             <form method="POST" enctype="multipart/form-data" id="uploadForm">
@@ -576,9 +531,19 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
                     <tbody>
                         <?php foreach ($preview_data as $row): ?>
                             <tr>
-                                <td><?= htmlspecialchars($row['case_no']) ?></td>
+                                <td>
+                                    <?= htmlspecialchars($row['case_no']) ?>
+                                    <?php if($row['existing_case']): ?>
+                                        <br><span style="color: #d32f2f; font-size: 10px; font-weight: bold;">(Duplicate - Will Skip)</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td><?= htmlspecialchars($row['incident_type']) ?></td>
-                                <td><?= htmlspecialchars($row['barangay']) ?></td>
+                                <td>
+                                    <?= htmlspecialchars($row['barangay']) ?>
+                                    <?php if($row['latitude'] && $row['longitude']): ?>
+                                        <br><span style="color: #28a745; font-size: 10px; font-weight: bold;">(Geo-Verified)</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td><?= htmlspecialchars(date('Y-m-d', strtotime($row['incident_date']))) ?></td>
                                 <td><?= htmlspecialchars($row['status']) ?></td>
                             </tr>
@@ -589,7 +554,7 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
                     <?php if (empty($errors) || $upload_status === 'warning'): ?>
                         <form method="POST" class="button-container">
                             <button type="submit" name="confirm_import" class="btn btn-success">
-                                Confirm & Import All Records
+                                Confirm & Import New Records
                             </button>
                             <button type="button" class="btn btn-secondary" onclick="location.reload()">
                                 Cancel
@@ -634,7 +599,6 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
             document.getElementById('uploadForm').submit();
         }, false);
 
-        // Show selected filename
         fileInput.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
                 const fileName = e.target.files[0].name;
