@@ -27,6 +27,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $update_stmt = $conn->prepare("UPDATE users SET last_login = NOW() WHERE id = ?");
             $update_stmt->bind_param("i", $user['id']);
             $update_stmt->execute();
+            $log_action = "login";
+            $user_ip = $_SERVER['REMOTE_ADDR'];
+            $audit_stmt = $conn->prepare("INSERT INTO audit_log (user_id, action, ip_address) VALUES (?, ?, ?)");
+            $audit_stmt->bind_param("iss", $user['id'], $log_action, $user_ip);
+            $audit_stmt->execute();
 
             // Phase 2: Role-based redirect
             if ($user['role'] === 'admin') {

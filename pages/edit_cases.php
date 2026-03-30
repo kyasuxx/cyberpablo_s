@@ -94,14 +94,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_case'])) {
                 $search1 = $true_brgy_name;
                 $search2 = "Brgy. " . $true_brgy_name;
                 $search3 = "Barangay " . $true_brgy_name;
+                $search4 = str_ireplace('Santa ', 'Sta. ', $search2); // THE FIX: Translates "Santa" to "Sta."
                 
                 $brgy_stmt = $conn->prepare("
                     SELECT id, official_name FROM barangays 
-                    WHERE official_name = ? OR alt_name = ? 
-                       OR official_name = ? OR official_name = ? 
+                    WHERE official_name IN (?, ?, ?, ?) OR alt_name = ? 
                     LIMIT 1
                 ");
-                $brgy_stmt->bind_param("ssss", $search1, $search1, $search2, $search3);
+                $brgy_stmt->bind_param("sssss", $search1, $search2, $search3, $search4, $search1);
                 $brgy_stmt->execute();
                 $brgy_data = $brgy_stmt->get_result()->fetch_assoc();
                 
@@ -113,6 +113,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_case'])) {
             }
         }
         // ------------------------------------------
+
+        // FIX: Check if "Others" was selected, and append the specific crime text
+        $final_incident_type = $_POST['incident_type'];
+        if ($final_incident_type === 'Others' && !empty(trim($_POST['other_specify']))) {
+            $final_incident_type = 'Others - ' . trim($_POST['other_specify']);
+        }
 
         // Update incident
         $update_stmt = $conn->prepare("
@@ -170,7 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_case'])) {
         
         $update_stmt->bind_param(
             "ssiddsssssssssssssdissssss",  
-            $_POST['incident_type'],       
+            $final_incident_type,          // <-- Saves custom crime
             $final_barangay,               // <-- Uses Geo-Validated Data
             $final_barangay_id,            // <-- Uses Geo-Validated Data
             $final_lat,                    // <-- Uses Geo-Validated Data
@@ -211,30 +217,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_case'])) {
             $history_insert->execute();
         }
         
+        // --- SECURE FILE UPLOAD BLOCK ---
         if (!empty($_FILES['attachments']['name'][0])) {
             $upload_dir = "../uploads/cases/" . $case_id . "/";
             if (!is_dir($upload_dir)) {
                 mkdir($upload_dir, 0755, true);
             }
             
+            // SECURITY FIX: Array of strictly allowed file extensions
+            $allowed_exts = ['jpg', 'jpeg', 'png', 'pdf', 'docx', 'doc', 'csv', 'txt'];
+
             foreach ($_FILES['attachments']['tmp_name'] as $key => $tmp_name) {
                 if ($_FILES['attachments']['error'][$key] === UPLOAD_ERR_OK) {
-                    $filename = basename($_FILES['attachments']['name'][$key]);
-                    $filename = preg_replace("/[^a-zA-Z0-9._-]/", "", $filename);
-                    $target = $upload_dir . time() . "_" . $filename;
+                    $original_filename = basename($_FILES['attachments']['name'][$key]);
+                    
+                    // SECURITY FIX: Extract extension and check it against our allowed list
+                    $file_ext = strtolower(pathinfo($original_filename, PATHINFO_EXTENSION));
+                    if (!in_array($file_ext, $allowed_exts)) {
+                        throw new Exception("Security Error: Uploading .$file_ext files is not permitted.");
+                    }
+
+                    // SECURITY FIX: Sanitize the filename to remove bad characters
+                    $safe_filename = preg_replace("/[^a-zA-Z0-9._-]/", "", $original_filename);
+                    $new_filename = time() . "_" . $safe_filename;
+                    $target = $upload_dir . $new_filename;
                     
                     if (move_uploaded_file($tmp_name, $target)) {
                         $att_stmt = $conn->prepare("
                             INSERT INTO attachments (incident_id, file_name, file_path, uploaded_by) 
                             VALUES (?, ?, ?, ?)
                         ");
-                        $att_stmt->bind_param("issi", $case['id'], $filename, $target, $user_id);
+                        $att_stmt->bind_param("issi", $case['id'], $new_filename, $target, $user_id);
                         $att_stmt->execute();
                         $att_stmt->close(); 
                     }
                 }
             }
         }
+        // --------------------------------
         
         $audit = $conn->prepare("INSERT INTO audit_log (user_id, action, ip_address) VALUES (?, ?, ?)");
         $action = "edit_cases_" . $case_id;
@@ -293,6 +313,18 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/";
                         </div>
                         <div class="form-group">
                             <label for="incident_type" class="required">Incident Type</label>
+                            <?php 
+                                // Logic to detect if a custom crime was previously saved
+                                $standard_types = [
+                                    'Republic Act No. 10175 (Phishing)', 'Republic Act No. 10175 (Online Fraud)', 
+                                    'Republic Act No. 10175 (Identity Theft)', 'Republic Act No. 10175 (Cyber Harassment)', 
+                                    'Republic Act No. 10175 (Sextortion)', 'Republic Act No. 10175 (Online Libel)', 
+                                    'Republic Act No. 10175 (Hacking)'
+                                ];
+                                $is_others = (!in_array($case['incident_type'], $standard_types) && !empty($case['incident_type']));
+                                $others_val = $is_others ? str_replace('Others - ', '', $case['incident_type']) : '';
+                                if ($case['incident_type'] === 'Others') $others_val = ''; 
+                            ?>
                             <select id="incident_type" name="incident_type" required>
                                 <option value="">Select a type...</option>
                                 <option value="Republic Act No. 10175 (Phishing)" <?= $case['incident_type']=='Republic Act No. 10175 (Phishing)'?'selected':'' ?>>Republic Act No. 10175 (Phishing)</option>
@@ -302,10 +334,13 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/";
                                 <option value="Republic Act No. 10175 (Sextortion)" <?= $case['incident_type']=='Republic Act No. 10175 (Sextortion)'?'selected':'' ?>>Republic Act No. 10175 (Sextortion)</option>
                                 <option value="Republic Act No. 10175 (Online Libel)" <?= $case['incident_type']=='Republic Act No. 10175 (Online Libel)'?'selected':'' ?>>Republic Act No. 10175 (Online Libel)</option>
                                 <option value="Republic Act No. 10175 (Hacking)" <?= $case['incident_type']=='Republic Act No. 10175 (Hacking)'?'selected':'' ?>>Republic Act No. 10175 (Hacking)</option>
-                                <option value="Others" <?= $case['incident_type']=='Others'?'selected':'' ?>>Others</option>
+                                <option value="Others" <?= $is_others ? 'selected' : '' ?>>Others</option>
                             </select>
 
-                            <input type="text" id="other_specify" name="other_specify" placeholder="Please specify the crime..." style="display:none; margin-top:10px;">
+                            <input type="text" id="other_specify" name="other_specify" 
+                                   value="<?= htmlspecialchars($others_val) ?>"
+                                   placeholder="Please specify the crime..." 
+                                   style="display: <?= $is_others ? 'block' : 'none' ?>; margin-top:10px; width: 100%; padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box;">
                         </div>
                     </div>
 
@@ -357,7 +392,7 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/";
                 </div>
 
                 <div class="card">
-                    <h2>👥 Parties Involved</h2>
+                    <h2>Parties Involved</h2>
                     
                     <div class="form-row">
                         <div class="form-group">
@@ -403,7 +438,7 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/";
                 </div>
 
                 <div class="card">
-                    <h2>⚖️ Case Details</h2>
+                    <h2>Case Details</h2>
                     
                     <div class="form-row">
                         <div class="form-group">
@@ -613,8 +648,12 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/";
         // Barangay data from PHP
         const barangays = <?= json_encode($barangay_data) ?>;
         
+        // FIX: Provide fallback coordinates if the case has no location data yet
+        const startLat = <?= !empty($case['lat']) ? $case['lat'] : '14.0702' ?>;
+        const startLng = <?= !empty($case['lng']) ? $case['lng'] : '121.3256' ?>;
+
         // Initialize map
-        const map = L.map('map').setView([<?= $case['lat'] ?>, <?= $case['lng'] ?>], 15);
+        const map = L.map('map').setView([startLat, startLng], 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors'
         }).addTo(map);
@@ -648,7 +687,7 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/";
             .catch(error => console.error("Error loading Barangay borders:", error));
 
         // Add draggable marker
-        let marker = L.marker([<?= $case['lat'] ?>, <?= $case['lng'] ?>], {
+        let marker = L.marker([startLat, startLng], {
             draggable: true
         }).addTo(map);
 
@@ -763,6 +802,22 @@ $attachment_dir = "../uploads/cases/" . $case_id . "/";
             prosecutorText.disabled = true;
             prosecutorText.style.backgroundColor = '#f0f0f0';
         }
+
+        // Toggle 'Others' Incident Type textbox
+        const typeSelect = document.getElementById('incident_type');
+        const otherInput = document.getElementById('other_specify');
+
+        typeSelect.addEventListener('change', function() {
+            if (this.value === 'Others') {
+                otherInput.style.display = 'block';
+                otherInput.required = true;
+                otherInput.focus();
+            } else {
+                otherInput.style.display = 'none';
+                otherInput.required = false;
+                otherInput.value = ''; // Clear it out if they change their mind
+            }
+        });
 
         // Form validation
         const form = document.querySelector('form');

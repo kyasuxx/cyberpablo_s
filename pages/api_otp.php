@@ -1,61 +1,45 @@
 <?php
 session_start();
+// Prevent PHP warnings from breaking the JSON format
+error_reporting(0);
+ini_set('display_errors', 0);
 header('Content-Type: application/json');
 
-// Bring in database and Composer dependencies
 require_once 'config/connection.php';
-require_once '../vendor/autoload.php'; // This loads PHPMailer
+require_once '../vendor/autoload.php';
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-// Security check
 if (!isset($_SESSION['user_id'])) {
     echo json_encode(['success' => false, 'message' => 'Unauthorized']);
     exit;
 }
 
-$action = $_GET['action'] ?? '';
+$action = $_POST['action'] ?? '';
 
-if ($action === 'generate') {
-    // Fetch the user's email from the database
-    $user_id = $_SESSION['user_id'];
-    $stmt = $conn->prepare("SELECT email FROM users WHERE id = ?");
-    $stmt->bind_param("i", $user_id);
-    $stmt->execute();
-    $user_data = $stmt->get_result()->fetch_assoc();
-
-    if (empty($user_data['email'])) {
-        echo json_encode(['success' => false, 'message' => 'No email address registered to this account.']);
-        exit;
-    }
+if ($action === 'send') {
+    // Hardcoded email for the defense presentation
+    $recipient_email = 'bachoichoi31@gmail.com'; 
 
     $otp = rand(100000, 999999);
-    $_SESSION['export_otp'] = $otp;
+    $_SESSION['export_otp'] = (string)$otp; // Force string format
     $_SESSION['export_otp_time'] = time();
 
-    // --- REAL EMAIL SENDING BLOCK (PHPMailer) ---
     $mail = new PHPMailer(true);
 
     try {
-        // Server settings
         $mail->isSMTP();
         $mail->Host       = 'smtp.gmail.com';
         $mail->SMTPAuth   = true;
-        
-        // --- IMPORTANT: PUT YOUR GMAIL DETAILS HERE ---
-        $mail->Username   = 'bachoichoi31@gmail.com'; // The email sending the OTP
-        $mail->Password   = 'REDACTED';  // No spaces
-        // ----------------------------------------------
-        
+        $mail->Username   = 'bachoichoi31@gmail.com'; 
+        $mail->Password   = 'REDACTED';  
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port       = 587;
 
-        // Recipients
         $mail->setFrom($mail->Username, 'CyberPablo System');
-        $mail->addAddress($user_data['email']); // Send to the logged-in user's email
+        $mail->addAddress($recipient_email); 
 
-        // Content
         $mail->isHTML(true);
         $mail->Subject = 'Security Verification - CyberPablo Data Export';
         $mail->Body    = "
@@ -65,27 +49,25 @@ if ($action === 'generate') {
                 <div style='background: #f4f4f4; padding: 15px; font-size: 24px; font-weight: bold; text-align: center; letter-spacing: 5px; margin: 20px 0;'>
                     {$otp}
                 </div>
-                <p style='color: red; font-size: 12px;'>This code is valid for exactly 5 minutes. Do not share it with anyone.</p>
+                <p style='color: red; font-size: 12px;'>This code is valid for exactly 5 minutes.</p>
             </div>
         ";
 
         $mail->send();
-        echo json_encode(['success' => true, 'message' => 'OTP sent to registered email.']);
-        exit;
+        echo json_encode(['success' => true, 'message' => 'OTP sent successfully.']);
     } catch (Exception $e) {
-        echo json_encode(['success' => false, 'message' => 'Email failed to send. Check server settings.']);
-        exit;
+        echo json_encode(['success' => false, 'message' => 'Email failed to send.']);
     }
-    // ------------------------------------------
+    exit;
 }
 
 if ($action === 'verify') {
-    $input_code = trim($_POST['code'] ?? '');
+    $input_code = trim($_POST['otp'] ?? '');
     $actual_code = $_SESSION['export_otp'] ?? '';
     $timestamp = $_SESSION['export_otp_time'] ?? 0;
 
-    // Check if code matches AND is less than 5 minutes old (300 seconds)
-    if ($input_code == $actual_code && (time() - $timestamp) < 300) {
+    // Strict check: Not empty, matches exactly, and within 5 minutes
+    if ($input_code !== '' && $input_code === $actual_code && (time() - $timestamp) < 300) {
         unset($_SESSION['export_otp']);
         echo json_encode(['success' => true]);
     } else {
@@ -93,3 +75,7 @@ if ($action === 'verify') {
     }
     exit;
 }
+
+echo json_encode(['success' => false, 'message' => 'Invalid action.']);
+exit;
+?>

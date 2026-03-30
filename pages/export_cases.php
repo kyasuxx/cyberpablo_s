@@ -8,6 +8,7 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 
 function safeFormatDate($dateString, $format = 'Y-m-d') {
     if (empty($dateString) || str_contains($dateString, '0000-00-00')) {
@@ -37,8 +38,9 @@ $month = $_GET['month'] ?? '';
 $year = $_GET['year'] ?? '';
 
 // Build query with prosecutor JOIN
+// Build query with prosecutor JOIN
 $sql = "SELECT i.*, 
-               b.lat, b.lng, b.official_name, b.alt_name,
+               b.official_name, b.alt_name,
                p.full_name as prosecutor_name
         FROM incidents i 
         LEFT JOIN barangays b ON i.barangay_id = b.id
@@ -229,8 +231,17 @@ while ($data = $result->fetch_assoc()) {
     $sheet->setCellValue('V' . $row, $data['returned_to'] ?? '');
     $sheet->setCellValue('W' . $row, safeFormatDate($data['returned_date'], 'Y-m-d H:i'));
     $sheet->setCellValue('X' . $row, $data['evidence_notes'] ?? '');
-    $sheet->setCellValue('Y' . $row, $data['lat'] ?? '');
-    $sheet->setCellValue('Z' . $row, $data['lng'] ?? '');
+    
+    // FORCE 6-decimal precision and format as strict String
+    if (!empty($data['lat']) && !empty($data['lng'])) {
+        $lat_formatted = number_format((float)$data['lat'], 6, '.', '');
+        $lng_formatted = number_format((float)$data['lng'], 6, '.', '');
+        $sheet->setCellValueExplicit('Y' . $row, $lat_formatted, DataType::TYPE_STRING);
+        $sheet->setCellValueExplicit('Z' . $row, $lng_formatted, DataType::TYPE_STRING);
+    } else {
+        $sheet->setCellValue('Y' . $row, '');
+        $sheet->setCellValue('Z' . $row, '');
+    }
 
    
     $att_stmt->bind_param("i", $data['id']);

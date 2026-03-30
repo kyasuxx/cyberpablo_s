@@ -13,8 +13,37 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 
+// --- 1. LOG AUDIT FIRST (Before headers are sent) ---
+$audit = $conn->prepare("INSERT INTO audit_log (user_id, action, ip_address) VALUES (?, 'download_template', ?)");
+$audit->bind_param("is", $_SESSION['user_id'], $_SERVER['REMOTE_ADDR']);
+$audit->execute();
+// ----------------------------------------------------
+
 $spreadsheet = new Spreadsheet();
 $sheet = $spreadsheet->getActiveSheet();
+$sheet->setTitle('Import Data');
+
+// --- 2. CREATE A HIDDEN SHEET FOR LONG DROPDOWN MENUS ---
+$dropdownSheet = $spreadsheet->createSheet();
+$dropdownSheet->setTitle('DropdownData');
+$dropdownSheet->setSheetState(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet::SHEETSTATE_HIDDEN);
+
+// The exact strings expected by the database
+$incidentTypes = [
+    ['Republic Act No. 10175 (Phishing)'],
+    ['Republic Act No. 10175 (Online Fraud)'],
+    ['Republic Act No. 10175 (Identity Theft)'],
+    ['Republic Act No. 10175 (Cyber Harassment)'],
+    ['Republic Act No. 10175 (Sextortion)'],
+    ['Republic Act No. 10175 (Online Libel)'],
+    ['Republic Act No. 10175 (Hacking)'],
+    ['Others']
+];
+$dropdownSheet->fromArray($incidentTypes, NULL, 'A1');
+// --------------------------------------------------------
+
+// Set active sheet back to main data sheet
+$spreadsheet->setActiveSheetIndex(0);
 
 // Set headers - Matched EXACTLY to export_cases.php
 $headers = [
@@ -42,7 +71,7 @@ $sheet->getStyle('A1:' . $lastColumn . '1')->applyFromArray($headerStyle);
 // Add sample data with ALL columns
 $sample = [
     'CYBER-2025-XXXX',                         // Case No
-    'Phishing',                                // Incident Type
+    'Republic Act No. 10175 (Phishing)',       // Incident Type (Fixed to match DB)
     'Brgy. VI-A',                              // Barangay
     '2025-11-03',                              // Incident Date
     '2025-11-03',                              // Date Filed
@@ -55,7 +84,7 @@ $sample = [
     '09189876543',                             // Complainant Contact
     'Fake GCash link sent via SMS',            // Modus Operandi
     'Atty. Pedro Reyes',                       // Prosecutor
-    '',                                        // Branch (Not in import, but in export)
+    '',                                        // Branch
     'NPS-2025-001',                            // NPS Docket
     'Estafa thru Electronic Means',            // Offense/Crime
     '2025-11-01 14:30',                        // Date Committed
@@ -65,14 +94,14 @@ $sample = [
     'Fiscal Office',                           // Returned To
     '2025-11-05 15:30',                        // Returned Date
     'Evidence includes screenshots and SMS',   // Evidence Notes
-    '',                                        // Latitude (Handled by import)
-    '',                                        // Longitude (Handled by import)
+    '',                                        // Latitude
+    '',                                        // Longitude
     'report.pdf, evidence_01.jpg'              // Attachments
 ];
 
 $sheet->fromArray($sample, NULL, 'A2');
 
-// Add data validation for incident_type (Column B)
+// Add data validation for incident_type (Column B) -> Linking to the hidden sheet!
 $validation = $sheet->getCell('B2')->getDataValidation();
 $validation->setType(\PhpOffice\PhpSpreadsheet\Cell\DataValidation::TYPE_LIST);
 $validation->setErrorStyle(\PhpOffice\PhpSpreadsheet\Cell\DataValidation::STYLE_INFORMATION);
@@ -84,9 +113,10 @@ $validation->setErrorTitle('Invalid Type');
 $validation->setError('Please select from dropdown');
 $validation->setPromptTitle('Select Type');
 $validation->setPrompt('Choose incident type');
-$validation->setFormula1('"Phishing,Online Fraud,Identity Theft,Cyber Harassment,Others"');
+// FIX: Reference the cells in the hidden sheet
+$validation->setFormula1('DropdownData!$A$1:$A$8'); 
 
-// Add data validation for status (Column F)
+// Add data validation for status (Column F) -> Short enough for direct string
 $validation2 = $sheet->getCell('F2')->getDataValidation();
 $validation2->setType(\PhpOffice\PhpSpreadsheet\Cell\DataValidation::TYPE_LIST);
 $validation2->setErrorStyle(\PhpOffice\PhpSpreadsheet\Cell\DataValidation::STYLE_INFORMATION);
@@ -103,7 +133,7 @@ foreach (range('A', 'Z') as $col) {
 $sheet->getColumnDimension('AA')->setAutoSize(true);
 
 
-// Add instructions sheet
+// --- Add instructions sheet ---
 $instructionsSheet = $spreadsheet->createSheet();
 $instructionsSheet->setTitle('Instructions');
 
@@ -164,11 +194,5 @@ header('Cache-Control: max-age=0');
 
 $writer = new Xlsx($spreadsheet);
 $writer->save('php://output');
-
-// Log audit
-$audit = $conn->prepare("INSERT INTO audit_log (user_id, action, ip_address) VALUES (?, 'download_template', ?)");
-$audit->bind_param("is", $_SESSION['user_id'], $_SERVER['REMOTE_ADDR']);
-$audit->execute();
-
 exit;
 ?>

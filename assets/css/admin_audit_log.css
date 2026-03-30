@@ -1,111 +1,302 @@
-/* General Layout */
-body { 
-    font-family: 'Segoe UI', sans-serif; 
-    background: #f0f2f5; 
-    padding: 20px; 
+/* --- Fonts & Variables --- */
+@import url('https://fonts.googleapis.com/css2?family=Merriweather:wght@700&family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap');
+
+:root {
+    --bg-page: #f4f7f9;
+    --bg-card: #ffffff;
+    --text-main: #334155;
+    --text-muted: #64748b;
+    --color-primary-blue: #2c4e9e; 
+    --color-primary-hover: #1e3a8a;
+    --color-success: #16a34a; 
+    --border-input: #cbd5e1;
+    --border-input-focus: #3b82f6;
+    --border-divider: #e2e8f0;
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-serif: 'Merriweather', Georgia, serif;
+    --font-mono: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
-/* Header & Navigation */
-.header { 
-    display: flex; 
-    justify-content: space-between; 
-    align-items: center; 
-    margin-bottom: 20px; 
+/* --- General Layout --- */
+body {
+    font-family: var(--font-sans);
+    background: var(--bg-page);
+    color: var(--text-main);
+    padding: 30px 40px;
+    margin: 0;
+    line-height: 1.5;
+}
+
+/* --- Header & Navigation --- */
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
 }
 
 .header-title {
-    margin: 5px 0; 
-    color: #333;
+    margin: 0 0 4px 0;
+    color: var(--color-primary-blue);
+    font-family: var(--font-serif);
+    font-size: 1.8rem;
 }
 
 .header-subtitle {
-    color: #666; 
-    margin: 0; 
-    font-size: 14px;
-}
-
-.back-btn { 
-    text-decoration: none; 
-    color: #003366; 
-    font-weight: bold; 
-}
-
-.print-btn {
-    padding: 8px 15px; 
-    cursor: pointer;
-    background: #fff;
-    border: 1px solid #ccc;
-    border-radius: 4px;
+    color: var(--text-muted);
+    margin: 0;
+    font-size: 0.95rem;
     font-weight: 500;
 }
 
+.back-btn {
+    text-decoration: none;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: color 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.back-btn:hover {
+    color: var(--color-primary-blue);
+}
+
+.print-btn {
+    padding: 10px 20px;
+    cursor: pointer;
+    background: var(--bg-card);
+    color: var(--text-main);
+    border: 1px solid var(--border-input);
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    font-family: var(--font-sans);
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+
 .print-btn:hover {
-    background: #f5f5f5;
+    background: #f1f5f9;
+    border-color: var(--text-muted);
 }
 
-/* Audit Table Styles */
-.log-card { 
-    background: white; 
-    border-radius: 8px; 
-    box-shadow: 0 2px 10px rgba(0,0,0,0.05); 
-    overflow: hidden; 
+/* --- Summary Grid (KPI Cards) --- */
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
 }
 
-table { 
-    width: 100%; 
-    border-collapse: collapse; 
+.summary-box {
+    background: var(--bg-card);
+    padding: 24px;
+    border-radius: 12px;
+    border: 1px solid var(--border-divider);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
 }
 
-th, td { 
-    padding: 12px 15px; 
-    text-align: left; 
-    border-bottom: 1px solid #eee; 
-    font-size: 14px; 
+.summary-box h4 {
+    margin: 0 0 6px 0;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+    font-weight: 700;
 }
 
-th { 
-    background: #003366; 
-    color: white; 
-    text-transform: uppercase; 
-    font-size: 12px; 
-    letter-spacing: 0.5px; 
+.summary-box .stat {
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: var(--color-primary-blue);
+    line-height: 1;
 }
 
-tr:hover { background: #f9f9f9; }
+.summary-box.alert-border {
+    border-left: 6px solid #ef4444; /* Modern red for alerts */
+}
 
-/* Status & Tags */
+/* --- Search Section --- */
+.search-container {
+    margin-bottom: 24px;
+    display: flex;
+    gap: 12px;
+}
+
+.search-input {
+    padding: 12px 16px;
+    width: 100%;
+    border-radius: 8px;
+    border: 1px solid var(--border-input);
+    font-size: 0.95rem;
+    font-family: var(--font-sans);
+    color: var(--text-main);
+    transition: all 0.2s ease;
+    background: var(--bg-card);
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--border-input-focus);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+/* --- Audit Table Styles --- */
+.log-card {
+    background: var(--bg-card);
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+    border: 1px solid var(--border-divider);
+    overflow: hidden;
+}
+
+table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+th, td {
+    padding: 14px 20px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-divider);
+    font-size: 0.9rem;
+}
+
+th {
+    background-color: #f8fafc;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+tr:last-child td {
+    border-bottom: none;
+}
+
+tr:hover {
+    background: #f1f5f9;
+}
+
+/* --- Status & Tags (Pills) --- */
 .timestamp-col {
-    white-space: nowrap; 
-    color: #555;
+    white-space: nowrap;
+    color: var(--text-muted);
+    font-size: 0.85rem;
 }
 
-.role-badge { 
-    padding: 2px 6px; 
-    border-radius: 4px; 
-    font-size: 11px; 
-    font-weight: bold; 
-    text-transform: uppercase; 
+.role-badge {
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: inline-block;
 }
 
-.role-admin { background: #e3f2fd; color: #1565c0; }
-.role-user { background: #f3e5f5; color: #7b1fa2; }
-
-.action-tag { 
-    font-family: monospace; 
-    background: #eee; 
-    padding: 2px 5px; 
-    border-radius: 3px; 
-    color: #333; 
+.role-admin {
+    background: #fef3c7; /* Modern Yellow/Gold for Admin */
+    color: #92400e;
 }
 
-.ip-address { 
-    color: #666; 
-    font-size: 12px; 
+.role-user {
+    background: #e0f2fe; /* Modern Light Blue for User */
+    color: #1e40af;
 }
 
-/* Print Optimization */
+.action-tag {
+    font-family: var(--font-mono);
+    background: #f1f5f9;
+    padding: 4px 8px;
+    border-radius: 4px;
+    color: var(--text-main);
+    font-size: 0.8rem;
+    border: 1px solid var(--border-divider);
+}
+
+.ip-address {
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+/* --- Severity Tags --- */
+.tag {
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: inline-block;
+    white-space: nowrap;
+}
+
+.tag-danger {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+}
+
+.tag-warning {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fde68a;
+}
+
+.tag-success {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+}
+
+.tag-info {
+    background: #e0f2fe;
+    color: #1e40af;
+    border: 1px solid #bae6fd;
+}
+
+/* --- Links --- */
+.username-link {
+    color: var(--color-primary-blue);
+    font-weight: 600;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.username-link:hover {
+    color: var(--color-primary-hover);
+    text-decoration: underline;
+}
+
+/* --- Print Styles --- */
 @media print {
-    .back-btn, .print-btn { display: none; }
-    body { padding: 0; background: white; }
-    .log-card { box-shadow: none; border: 1px solid #ddd; }
+    body {
+        padding: 0;
+        background: white;
+    }
+
+    .log-card {
+        box-shadow: none;
+        border: 1px solid #ddd;
+    }
+
+    .search-container,
+    .back-btn,
+    .print-btn,
+    .summary-grid { /* Hid summary on print for cleaner log reading */
+        display: none !important;
+    }
 }

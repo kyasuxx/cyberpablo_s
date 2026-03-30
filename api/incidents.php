@@ -31,11 +31,10 @@ $date_from = $_GET['date_from'] ?? '';
 $date_to = $_GET['date_to'] ?? '';
 
 if ($search) {
-    // Note: 'accused' and 'complainant' are not in your SELECT, this filter may not work
-    $sql .= " AND (i.case_no LIKE ?)"; 
+    $sql .= " AND (i.case_no LIKE ? OR i.accused LIKE ? OR i.complainant LIKE ? OR i.modus_operandi LIKE ?)"; 
     $like = "%$search%";
-    $params = array_merge($params, [$like]);
-    $types .= "s";
+    $params = array_merge($params, [$like, $like, $like, $like]);
+    $types .= "ssss";
 }
 if ($type) { 
     $sql .= " AND i.incident_type = ?"; 

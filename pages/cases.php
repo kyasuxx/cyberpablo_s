@@ -102,11 +102,24 @@ if ($month && $year) {
 }
 
 // Count query
-$count_sql = preg_replace('/SELECT i\.\*, .+ FROM/s', 'SELECT COUNT(*) FROM', $sql);
-$count_stmt = $conn->prepare($count_sql);
-if ($params) $count_stmt->bind_param($types, ...$params);
-$count_stmt->execute();
-$total = $count_stmt->get_result()->fetch_row()[0];
+$stats_sql = preg_replace('/SELECT i\.\*, .+ FROM/s', "SELECT 
+    COUNT(i.id) as total_count,
+    SUM(CASE WHEN i.status = 'Open' THEN 1 ELSE 0 END) as open_count,
+    SUM(CASE WHEN i.status = 'Under Investigation' THEN 1 ELSE 0 END) as inv_count,
+    SUM(CASE WHEN i.status = 'Closed' THEN 1 ELSE 0 END) as closed_count
+FROM", $sql);
+
+$stats_stmt = $conn->prepare($stats_sql);
+if ($params) $stats_stmt->bind_param($types, ...$params);
+$stats_stmt->execute();
+$stats_row = $stats_stmt->get_result()->fetch_assoc();
+
+// Assign variables (fallback to 0 if null)
+$total = $stats_row['total_count'] ?? 0;
+$open_count = $stats_row['open_count'] ?? 0;
+$inv_count = $stats_row['inv_count'] ?? 0;
+$closed_count = $stats_row['closed_count'] ?? 0;
+
 $pages = ceil($total / $limit);
 
 // Sorting logic
@@ -146,15 +159,15 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
 
         <div class="stats">
             <div class="stat-box">
-                <h3><?= $conn->query("SELECT COUNT(*) FROM incidents WHERE status='Open'")->fetch_row()[0] ?></h3>
+                <h3><?= $open_count ?></h3>
                 <p>Open Cases</p>
             </div>
             <div class="stat-box">
-                <h3><?= $conn->query("SELECT COUNT(*) FROM incidents WHERE status='Under Investigation'")->fetch_row()[0] ?></h3>
+                <h3><?= $inv_count ?></h3>
                 <p>Investigating</p>
             </div>
             <div class="stat-box">
-                <h3><?= $conn->query("SELECT COUNT(*) FROM incidents WHERE status='Closed'")->fetch_row()[0] ?></h3>
+                <h3><?= $closed_count ?></h3>
                 <p>Closed</p>
             </div>
         </div>
@@ -621,6 +634,7 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
     }
 
     // --- REAL OTP EXPORT LOGIC ---
+    // --- REAL OTP EXPORT LOGIC ---
     let exportParams = "";
 
     function startExportProcess() {
@@ -630,7 +644,7 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
         exportBtn.disabled = true;
         exportBtn.style.opacity = "0.7";
 
-        // 1. Grab all the current filters... (Keep your existing param code here)
+        // 1. Grab all the current filters...
         const search = document.querySelector('input[name="search"]')?.value || "";
         const type = document.querySelector('select[name="type"]')?.value || "";
         const barangay = document.querySelector('select[name="barangay"]')?.value || "";
@@ -645,31 +659,35 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
             date_from: dateFrom, date_to: dateTo, month: month, year: year
         }).toString();
 
-        // 2. Tell the API to generate and send the Email
-        fetch('api_otp.php?action=generate')
-            .then(response => response.json())
-            .then(data => {
-                // Reset button state
-                exportBtn.innerText = originalText;
-                exportBtn.disabled = false;
-                exportBtn.style.opacity = "1";
+        // 2. Tell the API to generate and send the Email (UPDATED TO POST)
+        fetch('api_otp.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'action=send'
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Reset button state
+            exportBtn.innerText = originalText;
+            exportBtn.disabled = false;
+            exportBtn.style.opacity = "1";
 
-                if (data.success) {
-                    document.getElementById('otpExportModal').style.display = 'flex';
-                    document.getElementById('exportOtpInput').value = '';
-                    document.getElementById('otpErrorMsg').style.display = 'none';
-                    document.getElementById('exportOtpInput').focus();
-                } else {
-                    alert("Error: " + data.message);
-                }
-            })
-            .catch(error => {
-                exportBtn.innerText = originalText;
-                exportBtn.disabled = false;
-                exportBtn.style.opacity = "1";
-                console.error('Error:', error);
-                alert('Failed to trigger OTP. Check console.');
-            });
+            if (data.success) {
+                document.getElementById('otpExportModal').style.display = 'flex';
+                document.getElementById('exportOtpInput').value = '';
+                document.getElementById('otpErrorMsg').style.display = 'none';
+                document.getElementById('exportOtpInput').focus();
+            } else {
+                alert("Error: " + data.message);
+            }
+        })
+        .catch(error => {
+            exportBtn.innerText = originalText;
+            exportBtn.disabled = false;
+            exportBtn.style.opacity = "1";
+            console.error('Error:', error);
+            alert('Failed to trigger OTP. Check console.');
+        });
     }
 
     function verifyExportOtp() {
@@ -684,13 +702,11 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
         btn.innerHTML = "Verifying...";
         btn.disabled = true;
 
-        // 3. Send the typed code to the API for verification
-        let formData = new FormData();
-        formData.append('code', code);
-
-        fetch('api_otp.php?action=verify', {
+        // 3. Send the typed code to the API for verification (UPDATED TO MATCH API)
+        fetch('api_otp.php', {
             method: 'POST',
-            body: formData
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'action=verify&otp=' + encodeURIComponent(code)
         })
         .then(response => response.json())
         .then(data => {

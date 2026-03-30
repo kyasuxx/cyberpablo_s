@@ -17,6 +17,42 @@ $preview_data = [];
 $errors = [];
 $duplicate_count_preview = 0;
 
+// --- UNIVERSAL DATE PARSER ---
+// Handles Standard Strings, EU formats, US formats, AND Excel Serial Floats
+function safeImportDate($dateInput, $format = 'Y-m-d') {
+    if (empty(trim($dateInput)) || str_contains($dateInput, '0000-00-00') || str_contains($dateInput, '0001')) {
+        return null;
+    }
+
+    // 1. Handle Excel numeric date serials (e.g., 46103)
+    if (is_numeric($dateInput)) {
+        try {
+            $dateTime = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($dateInput);
+            return $dateTime->format($format);
+        } catch (Exception $e) {
+            return null;
+        }
+    }
+
+    // 2. Handle strings (e.g., "3/22/2026" or "2026-03-22")
+    $timestamp = strtotime($dateInput);
+
+    // If strtotime fails, it might be an EU format with slashes (DD/MM/YYYY) which PHP hates.
+    // Swapping slashes to dashes forces PHP to read it correctly.
+    if ($timestamp === false) {
+        $dateInput = str_replace('/', '-', $dateInput);
+        $timestamp = strtotime($dateInput);
+    }
+
+    if ($timestamp === false || $timestamp <= 0) {
+        return null;
+    }
+
+    return date($format, $timestamp);
+}
+// -----------------------------
+
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
     require_once '../vendor/autoload.php';
 
@@ -36,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
             $sheet = $spreadsheet->getActiveSheet();
             $rows = $sheet->toArray();
 
-            // Validate headers (Added Latitude and Longitude aliases!)
+            // Validate headers
             $header_aliases = [
                 'case_no' => ['case no', 'case number'],
                 'incident_type' => ['incident type', 'type of incident'],
@@ -107,35 +143,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
                     $row_data = @array_combine($headers, $rows[$i]);
                     if (!$row_data) continue;
 
-                    // --- 1. SPATIAL GEOFENCING AUTO-CORRECTOR (PREVIEW PHASE) ---
+                    $raw_case_no = trim(strval($row_data['case_no'] ?? ''));
+                    if (stripos($raw_case_no, 'summary') !== false || stripos(implode(' ', $rows[$i]), 'summary') !== false) {
+                        break; // Exit the loop entirely
+                    }
+
+                    // --- 1. SPATIAL GEOFENCING AUTO-CORRECTOR & CLEANER (PREVIEW PHASE) ---
                     $barangay_input = trim($row_data['barangay']);
                     $csv_lat = !empty($row_data['latitude']) ? (float)$row_data['latitude'] : 0;
                     $csv_lng = !empty($row_data['longitude']) ? (float)$row_data['longitude'] : 0;
 
+                    // PRECISION FIRST: Only auto-correct Barangay Name if coordinates are provided
                     if ($csv_lat !== 0 && $csv_lng !== 0) {
                         $geojson_path = '../api/san_pablo_barangays.json'; 
                         $true_barangay = getTrueBarangayFromGeoJSON($csv_lat, $csv_lng, $geojson_path);
-                        
-                        if ($true_barangay && strtolower($true_barangay) !== strtolower(preg_replace('/^Brgy\.?\s*/i', '', $barangay_input))) {
+                        if ($true_barangay) {
                             $barangay_input = $true_barangay;
-                            $row_data['barangay'] = "Brgy. " . $true_barangay; // Update preview to show the corrected name
                         }
                     }
 
-                    $clean = preg_replace('/^Brgy\.?\s*/i', '', $barangay_input);
+                    // Strip any weird prefixes to get the pure name (e.g., turns "Brgy. Barangay II-C" into "II-C")
+                    $pure_name = trim(preg_replace('/^(brgy\.?|barangay|bgy\.?)\s*/i', '', $barangay_input));
+                    
+                    // Format it to match the database strictly
+                    $db_format = "Brgy. " . $pure_name;
+
+                    // Generate all possible Santo/Santa variations
+                    $var_sta = str_ireplace('Santa ', 'Sta. ', $db_format);
+                    $var_sto = str_ireplace('Santo ', 'Sto. ', $db_format);
+                    $var_santa = str_ireplace('Sta. ', 'Santa ', $db_format);
+                    $var_santo = str_ireplace('Sto. ', 'Santo ', $db_format);
+
+                    // Update the row data so the preview table shows the clean name
+                    $row_data['barangay'] = $db_format;
 
                     $brgy_check = $conn->prepare("
                         SELECT id, official_name, lat, lng FROM barangays 
-                        WHERE official_name = ? OR alt_name = ? 
-                        OR official_name = ? OR alt_name = ? 
+                        WHERE official_name IN (?, ?, ?, ?, ?, ?) 
+                           OR alt_name = ?
                         LIMIT 1
                     ");
-                    $brgy_check->bind_param("ssss", $barangay_input, $barangay_input, $clean, $clean);
+                    $brgy_check->bind_param("sssssss", $barangay_input, $db_format, $var_sta, $var_sto, $var_santa, $var_santo, $pure_name);
                     $brgy_check->execute();
                     $brgy_result = $brgy_check->get_result();
 
                     if ($brgy_result->num_rows === 0) {
-                        $errors[] = "Row $i: Barangay '{$row_data['barangay']}' not found in database";
+                        $errors[] = "Row $i: Barangay '{$barangay_input}' not found in database (Check if it exists in the barangays table)";
                     }
 
                     $dup_check = $conn->prepare("SELECT case_no FROM incidents WHERE case_no = ?");
@@ -233,19 +286,28 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
     $conn->begin_transaction();
 
     try {
-        function safeImportDate($dateString, $format = 'Y-m-d') {
-            if (empty($dateString) || str_contains($dateString, '0000-00-00') || str_contains($dateString, '0001')) return null;
-            $timestamp = strtotime($dateString);
-            if ($timestamp === false || $timestamp <= 0) return null;
-            return date($format, $timestamp);
-        }
-
         for ($i = 1; $i < count($rows); $i++) {
             if (count($headers) != count($rows[$i])) continue; 
             
             $row_data = @array_combine($headers, $rows[$i]);
             if (!$row_data) continue;
 
+            // 1. Skip completely empty "ghost rows" at the bottom of the Excel file
+            if (empty(trim($row_data['case_no'] ?? '')) && empty(trim($row_data['incident_type'] ?? '')) && empty(trim($row_data['barangay'] ?? ''))) {
+                continue; 
+            }
+
+            // Stop processing if we hit the "SUMMARY STATISTICS" row
+            $raw_case_no = trim(strval($row_data['case_no'] ?? ''));
+            if (stripos($raw_case_no, 'summary') !== false || stripos(implode(' ', $rows[$i]), 'summary') !== false) {
+                break; // Exit the loop entirely
+            }
+
+            // 2. Check required fields before touching the database
+            if (empty(trim($row_data['case_no'] ?? '')) || empty(trim($row_data['incident_type'] ?? '')) || empty(trim($row_data['barangay'] ?? '')) || empty(trim($row_data['status'] ?? ''))) {
+                $excel_row = $i + 1; 
+                throw new Exception("Import Aborted: Missing required data (Case No, Type, Barangay, or Status) on Excel Row $excel_row. Please fix the file and try again.");
+            }
             $case_no = trim($row_data['case_no']);
             $dup_check_stmt = $conn->prepare("SELECT id FROM incidents WHERE case_no = ?");
             $dup_check_stmt->bind_param("s", $case_no);
@@ -257,7 +319,7 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
             }
             $dup_check_stmt->close();
 
-            // --- 2. SPATIAL GEOFENCING AUTO-CORRECTOR (IMPORT PHASE) ---
+            // --- 2. SPATIAL LOGIC (IMPORT PHASE) ---
             $barangay_input = trim($row_data['barangay']);
             $csv_lat = !empty($row_data['latitude']) ? (float)$row_data['latitude'] : 0;
             $csv_lng = !empty($row_data['longitude']) ? (float)$row_data['longitude'] : 0;
@@ -265,21 +327,28 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
             if ($csv_lat !== 0 && $csv_lng !== 0) {
                 $geojson_path = '../api/san_pablo_barangays.json'; 
                 $true_barangay = getTrueBarangayFromGeoJSON($csv_lat, $csv_lng, $geojson_path);
-                
-                if ($true_barangay && strtolower($true_barangay) !== strtolower(preg_replace('/^Brgy\.?\s*/i', '', $barangay_input))) {
+                if ($true_barangay) {
                     $barangay_input = $true_barangay;
                 }
             }
 
-            $clean = preg_replace('/^Brgy\.?\s*/i', '', $barangay_input);
+            // Clean the Barangay name string for Database Matching
+            $pure_name = trim(preg_replace('/^(brgy\.?|barangay|bgy\.?)\s*/i', '', $barangay_input));
+            $db_format = "Brgy. " . $pure_name;
+            
+            // Generate all possible variations
+            $var_sta = str_ireplace('Santa ', 'Sta. ', $db_format);
+            $var_sto = str_ireplace('Santo ', 'Sto. ', $db_format);
+            $var_santa = str_ireplace('Sta. ', 'Santa ', $db_format);
+            $var_santo = str_ireplace('Sto. ', 'Santo ', $db_format);
 
             $brgy_stmt = $conn->prepare("
                 SELECT id, official_name, lat, lng FROM barangays 
-                WHERE official_name = ? OR alt_name = ? 
-                OR official_name = ? OR alt_name = ? 
+                WHERE official_name IN (?, ?, ?, ?, ?, ?) 
+                   OR alt_name = ?
                 LIMIT 1
             ");
-            $brgy_stmt->bind_param("ssss", $barangay_input, $barangay_input, $clean, $clean);
+            $brgy_stmt->bind_param("sssssss", $barangay_input, $db_format, $var_sta, $var_sto, $var_santa, $var_santo, $pure_name);
             $brgy_stmt->execute();
             $brgy = $brgy_stmt->get_result()->fetch_assoc();
 
@@ -288,9 +357,14 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
                 continue;
             }
 
-            // CRITICAL FIX: If CSV provides coordinates, use them. Otherwise, default to Barangay center.
-            $final_lat = ($csv_lat !== 0) ? $csv_lat : $brgy['lat'];
-            $final_lng = ($csv_lng !== 0) ? $csv_lng : $brgy['lng'];
+            // Step D: FINAL COORDINATE ASSIGNMENT
+            if ($csv_lat !== 0 && $csv_lng !== 0) {
+                $final_lat = $csv_lat;
+                $final_lng = $csv_lng;
+            } else {
+                $final_lat = $brgy['lat'];
+                $final_lng = $brgy['lng'];
+            }
 
             $prosecutor_id = null;
             if (!empty($row_data['prosecutor'])) {
@@ -325,11 +399,13 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
 
-            $incident_date = safeImportDate($row_data['incident_date'] ?? '', 'Y-m-d') ?? date('Y-m-d');
-            $date_committed = safeImportDate($row_data['date_committed'] ?? '', 'Y-m-d H:i:s');
-            $date_filed = safeImportDate($row_data['date_filed'] ?? '', 'Y-m-d');
-            $received_date = safeImportDate($row_data['received_date'] ?? '', 'Y-m-d H:i:s');
-            $returned_date = safeImportDate($row_data['returned_date'] ?? '', 'Y-m-d H:i:s');
+            // Apply the Universal Date Parser!
+            $incident_date = safeImportDate($row_data['incident_date']) ?? date('Y-m-d');
+            $date_committed = safeImportDate($row_data['date_committed'], 'Y-m-d H:i:s');
+            $date_filed = safeImportDate($row_data['date_filed'], 'Y-m-d');
+            $received_date = safeImportDate($row_data['received_date'], 'Y-m-d H:i:s');
+            $returned_date = safeImportDate($row_data['returned_date'], 'Y-m-d H:i:s');
+            
             $bail = (!empty($row_data['bail_recommended']) && is_numeric($row_data['bail_recommended'])) 
                 ? floatval($row_data['bail_recommended']) : null;
 
@@ -358,13 +434,13 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
             $evidence_notes = $row_data['evidence_notes'] ?? '';
 
             $insert->bind_param(
-                "ssisddssssssssssssssdisssss",
+                "sssiddssssssssssssssdisssss",
                 $case_no,
                 $incident_type,
                 $brgy['official_name'],
                 $brgy['id'],
-                $final_lat, // Uses the corrected CSV coordinates
-                $final_lng, // Uses the corrected CSV coordinates
+                $final_lat, 
+                $final_lng, 
                 $incident_date,
                 $modus,
                 $victim_hash,
@@ -501,7 +577,7 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
 
             <form method="POST" enctype="multipart/form-data" id="uploadForm">
                 <div class="upload-area" onclick="document.getElementById('fileInput').click()">
-                    <div class="upload-icon">📁</div>
+                    <div class="upload-icon"><i class="fa-solid fa-folder-open"></i></div>
                     <h3>Click to select file or drag & drop</h3>
                     <p class="upload-subtext">Supported: .xlsx, .xls, .csv (Max 10MB)</p>
                 </div>
@@ -544,7 +620,9 @@ if (isset($_POST['confirm_import']) && isset($_SESSION['pending_import_rows'])) 
                                         <br><span style="color: #28a745; font-size: 10px; font-weight: bold;">(Geo-Verified)</span>
                                     <?php endif; ?>
                                 </td>
-                                <td><?= htmlspecialchars(date('Y-m-d', strtotime($row['incident_date']))) ?></td>
+                                
+                                <td><?= htmlspecialchars(safeImportDate($row['incident_date']) ?? 'Invalid Date') ?></td>
+                                
                                 <td><?= htmlspecialchars($row['status']) ?></td>
                             </tr>
                         <?php endforeach; ?>

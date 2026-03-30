@@ -66,7 +66,7 @@ $narrative .= "<strong>DETAILS OF INCIDENT:</strong><br>" . nl2br($details);
 </head>
 <body>
 
-    <button onclick="window.print()" class="no-print print-btn">🖨️ PRINT OFFICIAL COPY</button>
+    <button onclick="window.print()" class="no-print print-btn">PRINT OFFICIAL COPY</button>
 
     <div class="header">
         <p>Republic of the Philippines</p>

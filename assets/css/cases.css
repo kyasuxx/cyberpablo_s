@@ -8,12 +8,12 @@
     --text-main: #334155;
     --text-muted: #64748b;
     --text-placeholder: #94a3b8;
-    --color-primary-blue: #2c4e9e; 
-    --color-primary-blue-light: #4c6fc4; 
+    --color-primary-blue: #2c4e9e;
+    --color-primary-blue-light: #4c6fc4;
     --color-primary-hover: #1e3a8a;
-    --color-success: #16a34a; 
+    --color-success: #16a34a;
     --color-success-hover: #15803d;
-    --color-danger: #ef4444; 
+    --color-danger: #ef4444;
     --border-input: #cbd5e1;
     --border-input-focus: #3b82f6;
     --border-divider: #e2e8f0;
@@ -43,7 +43,7 @@ h2 {
     margin-bottom: 24px;
 }
 
-/* --- Header & Nav (Cleaned up) --- */
+/* --- Header & Nav --- */
 .header {
     background: var(--color-primary-blue);
     color: white;
@@ -73,7 +73,7 @@ h2 {
     color: #cbd5e1;
 }
 
-/* --- Statistics Boxes (Cards) --- */
+/* --- Statistics Boxes --- */
 .stats {
     display: flex;
     gap: 20px;
@@ -109,7 +109,7 @@ h2 {
     letter-spacing: 0.5px;
 }
 
-/* --- Desktop Filters (From Previous Setup) --- */
+/* --- Filters --- */
 .modern-filters-card {
     background-color: var(--bg-card);
     padding: 24px;
@@ -142,7 +142,8 @@ h2 {
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
-button, .btn-clear {
+button,
+.btn-clear {
     font-family: var(--font-sans);
     font-size: 0.9rem;
     font-weight: 600;
@@ -208,7 +209,8 @@ button, .btn-clear {
     white-space: nowrap;
 }
 
-.modern-select, .modern-input {
+.modern-select,
+.modern-input {
     width: 100%;
     padding: 10px 14px;
     font-size: 0.9rem;
@@ -226,7 +228,7 @@ button, .btn-clear {
     min-width: 0;
 }
 
-/* Active Filter Indicators */
+/* --- Active Filter Indicators --- */
 .active-filters {
     background: transparent;
     margin-bottom: 16px;
@@ -248,26 +250,26 @@ button, .btn-clear {
     box-shadow: 0 2px 4px rgba(0,0,0,0.02);
 }
 
-/* --- Modern Table Styles --- */
+/* --- Table --- */
 table {
     width: 100%;
-    border-collapse: separate; /* Required for border-radius on tables */
+    border-collapse: separate;
     border-spacing: 0;
     background: var(--bg-card);
     border-radius: 12px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
     border: 1px solid var(--border-divider);
-    overflow: hidden; /* Clips corners */
+    overflow: hidden;
 }
 
-th, td {
+th,
+td {
     padding: 16px 20px;
     text-align: left;
     border-bottom: 1px solid var(--border-divider);
     font-size: 0.9rem;
 }
 
-/* Light, clean headers */
 th {
     background-color: #f8fafc;
     color: var(--text-muted);
@@ -308,7 +310,7 @@ tr:last-child td {
     margin-top: 2px;
 }
 
-/* --- Status Badges (Pills) --- */
+/* --- Status Badges --- */
 [class^="status-"] {
     padding: 6px 12px;
     border-radius: 20px;
@@ -334,10 +336,10 @@ tr:last-child td {
     color: #166534;
 }
 
-/* --- Expandable Case Details (Matches Form Design) --- */
+/* --- Expandable Case Details --- */
 .details-row {
     background: #f8fafc;
-    box-shadow: inset 0 4px 6px -4px rgba(0, 0, 0, 0.05); /* Subtle inner shadow to show depth */
+    box-shadow: inset 0 4px 6px -4px rgba(0, 0, 0, 0.05);
 }
 
 .details-row td {
@@ -397,7 +399,7 @@ tr:last-child td {
     line-height: 1.5;
 }
 
-/* --- Action Buttons (Bottom of Details & Main Page) --- */
+/* --- Action Buttons --- */
 .action-buttons {
     margin-top: 24px;
     display: flex;
@@ -422,7 +424,7 @@ tr:last-child td {
     border-color: var(--color-primary-blue);
 }
 
-/* Pagination */
+/* --- Pagination --- */
 .pagination {
     text-align: center;
     margin: 30px 0;

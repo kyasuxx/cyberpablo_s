@@ -8,11 +8,11 @@
     --text-main: #334155;
     --text-muted: #64748b;
     --text-placeholder: #94a3b8;
-    --color-primary-blue: #2c4e9e; /* Header text color */
-    --color-primary-blue-light: #4c6fc4; /* Header underline color */
-    --color-success: #16a34a; /* Green save button */
+    --color-primary-blue: #2c4e9e;
+    --color-primary-blue-light: #4c6fc4;
+    --color-success: #16a34a;
     --color-success-hover: #15803d;
-    --color-danger: #ef4444; /* Asterisk red */
+    --color-danger: #ef4444;
     --border-input: #cbd5e1;
     --border-input-focus: #3b82f6;
     --border-divider: #e2e8f0;
@@ -22,36 +22,35 @@
 }
 
 /* --- General Layout --- */
-body { 
-    font-family: var(--font-sans); 
-    background: var(--bg-page); 
-    margin: 0; 
+body {
+    font-family: var(--font-sans);
+    background: var(--bg-page);
+    margin: 0;
     color: var(--text-main);
 }
 
 /* --- Form Container --- */
-.container { 
-    max-width: 1000px; 
-    margin: 40px auto; 
-    /* Increased bottom padding so the floating button doesn't hide the last field */
-    padding: 40px 50px 80px 50px; 
-    background: var(--bg-card); 
-    border-radius: 12px; 
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04); 
+.container {
+    max-width: 1000px;
+    margin: 40px auto;
+    padding: 40px 50px 80px 50px;
+    background: var(--bg-card);
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
 }
 
 /* --- Grid System --- */
-.form-grid { 
-    display: grid; 
-    grid-template-columns: repeat(3, 1fr); 
-    gap: 20px 24px; 
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px 24px;
 }
 
 /* --- Section Headers --- */
-.form-section { 
-    grid-column: 1 / -1; 
-    margin-top: 30px; 
-    margin-bottom: 5px; 
+.form-section {
+    grid-column: 1 / -1;
+    margin-top: 30px;
+    margin-bottom: 5px;
     padding-bottom: 12px;
     border-bottom: 1px solid var(--border-divider);
     position: relative;
@@ -61,7 +60,6 @@ body {
     margin-top: 0;
 }
 
-/* Blue underline simulation from Design 1 */
 .form-section::after {
     content: '';
     position: absolute;
@@ -70,39 +68,39 @@ body {
     width: 100%;
     height: 2px;
     background-color: var(--color-primary-blue-light);
-    opacity: 0.15; /* Subtle full-width underline */
+    opacity: 0.15;
 }
 
-.form-section h2 { 
+.form-section h2 {
     font-family: var(--font-serif);
-    color: var(--color-primary-blue); 
-    font-size: 1.4rem; 
-    margin: 0; 
+    color: var(--color-primary-blue);
+    font-size: 1.4rem;
+    margin: 0;
 }
 
 /* --- Form Groups & Labels --- */
-.form-group { 
-    display: flex; 
+.form-group {
+    display: flex;
     flex-direction: column;
     width: 100%;
 }
 
-.form-group.full-width { 
-    grid-column: 1 / -1; 
+.form-group.full-width {
+    grid-column: 1 / -1;
 }
 
-.form-group label { 
-    font-size: 0.75rem; 
-    font-weight: 700; 
-    color: var(--text-muted); 
-    text-transform: uppercase; 
+.form-group label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
     letter-spacing: 0.5px;
-    margin-bottom: 8px; 
+    margin-bottom: 8px;
 }
 
-.form-group label.required::after { 
-    content: ' *'; 
-    color: var(--color-danger); 
+.form-group label.required::after {
+    content: ' *';
+    color: var(--color-danger);
 }
 
 /* --- Inputs, Selects, and Textareas --- */
@@ -137,12 +135,12 @@ body {
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-.form-group textarea { 
-    resize: vertical; 
-    min-height: 100px; 
+.form-group textarea {
+    resize: vertical;
+    min-height: 100px;
 }
 
-/* Readonly Input Styling */
+/* --- Readonly Input --- */
 .readonly-input {
     background-color: var(--bg-input-readonly) !important;
     color: var(--text-muted) !important;
@@ -151,23 +149,20 @@ body {
 }
 
 #other_specify {
-    display: none; 
-    margin-top: 10px; 
+    display: none;
+    margin-top: 10px;
 }
 
-/* --- Choices.js Overrides (To match custom inputs) --- */
-/* --- Choices.js Overrides --- */
 /* --- Choices.js Overrides --- */
 .choices {
     margin-bottom: 0;
-    width: 100%; /* Ensures wrapper doesn't exceed grid */
+    width: 100%;
     position: relative;
 }
 
-/* 1. Default State */
 .choices__inner {
     width: 100%;
-    box-sizing: border-box; /* THIS FIXES THE CUT-OFF RIGHT BORDER */
+    box-sizing: border-box;
     background-color: var(--bg-card);
     border: 1px solid var(--border-input);
     border-radius: 6px;
@@ -183,48 +178,41 @@ body {
     padding-bottom: 5.5px;
 }
 
-/* 2. Focused (but not open) state */
 .choices.is-focused .choices__inner {
     border-color: var(--border-input-focus);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); 
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
-/* 3. OPEN state (This fixes the "broken" look) */
 .choices.is-open .choices__inner {
     border-color: var(--border-input-focus);
-    /* Remove bottom border and bottom radius so it merges with the list */
-    border-bottom-color: transparent; 
-    border-radius: 6px 6px 0 0; 
-    /* Keep the glow, but it will only naturally show on top/sides now */
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); 
+    border-bottom-color: transparent;
+    border-radius: 6px 6px 0 0;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
-/* 4. The Dropdown List */
 .choices__list--dropdown {
     border: 1px solid var(--border-input-focus);
-    border-top: none; /* Connects flush to the input above */
-    border-radius: 0 0 6px 6px; /* Rounded only at the bottom */
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1); /* Adds depth below the menu */
-    margin-top: 0; /* Ensures it touches the input exactly */
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+    margin-top: 0;
     z-index: 10;
 }
 
-/* 5. Caret (Triangle) Default - Pointing Down */
 .choices[data-type*="select-one"]::after {
-    border-color: #334155 transparent transparent transparent; 
+    border-color: #334155 transparent transparent transparent;
     border-width: 5px 5px 0 5px;
     right: 14px;
     margin-top: -2px;
 }
 
-/* 6. Caret (Triangle) Open - Pointing Up */
 .choices[data-type*="select-one"].is-open::after {
-    border-color: transparent transparent #334155 transparent; 
-    border-width: 0 5px 5px 5px; /* Flips the triangle physically */
-    margin-top: -2px; 
+    border-color: transparent transparent #334155 transparent;
+    border-width: 0 5px 5px 5px;
+    margin-top: -2px;
 }
 
-/* --- File Upload Area (Evidence) --- */
+/* --- File Upload Area --- */
 .form-group input[type="file"] {
     border: 2px dashed var(--border-input);
     background-color: var(--bg-input-readonly);
@@ -247,7 +235,7 @@ body {
     color: var(--text-main);
     border: none;
     padding: 8px 16px;
-    border-radius: 20px; /* Rounded button inside dropzone */
+    border-radius: 20px;
     margin-right: 15px;
     font-weight: 600;
     font-size: 0.85rem;
@@ -260,14 +248,12 @@ body {
     background-color: #cbd5e1;
 }
 
-/* --- Submit Button (Bottom Right) --- */
+/* --- Submit Button --- */
 .btn-submit {
-    /* Make the button stick to the screen */
     position: fixed;
     bottom: 40px;
     right: 40px;
-    z-index: 999; /* Ensures it stays on top of all other elements */
-    
+    z-index: 999;
     background: var(--color-success);
     color: white;
     font-size: 0.95rem;
@@ -278,24 +264,32 @@ body {
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s ease;
-    
-    /* Adds a pronounced drop shadow to sell the "floating" effect */
-    box-shadow: 0 8px 24px rgba(22, 163, 74, 0.35); 
+    box-shadow: 0 8px 24px rgba(22, 163, 74, 0.35);
 }
 
-.btn-submit:hover { 
-    background: var(--color-success-hover); 
+.btn-submit:hover {
+    background: var(--color-success-hover);
     box-shadow: 0 10px 28px rgba(22, 163, 74, 0.5);
-    transform: translateY(-2px); /* Slight lift effect on hover */
+    transform: translateY(-2px);
 }
 
 /* --- Messages --- */
-.message { 
-    padding: 15px 20px; 
-    border-radius: 6px; 
-    margin-bottom: 24px; 
-    font-weight: 500; 
+.message {
+    padding: 15px 20px;
+    border-radius: 6px;
+    margin-bottom: 24px;
+    font-weight: 500;
     font-size: 0.95rem;
 }
-.message.success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0;}
-.message.error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca;}
+
+.message.success {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+}
+
+.message.error {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+}

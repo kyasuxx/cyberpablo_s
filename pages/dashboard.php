@@ -90,8 +90,8 @@ $ai_barangay_spikes = [];
 $brgy_trend_sql = "
     SELECT * FROM (
         SELECT b.official_name,
-               SUM(CASE WHEN i.incident_date >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) as recent_30,
-               SUM(CASE WHEN i.incident_date >= DATE_SUB(NOW(), INTERVAL 60 DAY) AND i.incident_date < DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) as prev_30
+               SUM(CASE WHEN i.incident_date >= DATE_SUB((SELECT MAX(incident_date) FROM incidents), INTERVAL 30 DAY) THEN 1 ELSE 0 END) as recent_30,
+               SUM(CASE WHEN i.incident_date >= DATE_SUB((SELECT MAX(incident_date) FROM incidents), INTERVAL 60 DAY) AND i.incident_date < DATE_SUB((SELECT MAX(incident_date) FROM incidents), INTERVAL 30 DAY) THEN 1 ELSE 0 END) as prev_30
         FROM incidents i
         JOIN barangays b ON i.barangay_id = b.id
         GROUP BY i.barangay_id, b.official_name
@@ -211,94 +211,7 @@ $stmt->execute();
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
 
-    <style>
-        .map-mode-controls {
-            position: absolute; bottom: 30px; left: 30px; z-index: 1000; 
-            display: flex; flex-direction: column; gap: 15px;
-        }
-        .map-mode-btn {
-            width: 50px; height: 50px; border-radius: 50%; background-color: white;
-            border: 2px solid #ccc; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-            cursor: pointer; display: flex; align-items: center; justify-content: center;
-            color: #555; transition: all 0.2s ease-in-out;
-        }
-        .map-mode-btn:hover { background-color: #f8f9fa; transform: scale(1.05); }
-        .map-mode-btn.active { background-color: #003366; border-color: #003366; color: white; box-shadow: 0 0 15px rgba(0, 51, 102, 0.4); }
-        
-        /* Pulse Animation for Critical Alerts */
-        @keyframes pulse-red {
-            0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
-            70% { box-shadow: 0 0 0 15px rgba(220, 53, 69, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
-        }
-        .btn-alert-critical {
-            background-color: #dc3545 !important;
-            color: white !important;
-            animation: pulse-red 2s infinite;
-            border: 2px solid white;
-        }
-        .btn-alert-safe {
-            background-color: #28a745 !important; 
-            color: white !important;
-        }
-        /* SLEEK MODERN MAP MENU */
-        .map-buttons-modern {
-            position: absolute;
-            top: 20px;
-            right: 20px; /* Moved to the right side to keep the left clear for zoom controls */
-            z-index: 1000;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .modern-float-btn {
-            background: white;
-            color: #333;
-            border: 1px solid #e0e0e0;
-            padding: 10px 15px;
-            border-radius: 8px;
-            font-size: 13px;
-            font-weight: 600;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: flex-start;
-            width: 170px; /* Perfect uniform size */
-            transition: all 0.2s ease;
-            font-family: inherit;
-        }
-
-        .modern-float-btn:hover {
-            background: #f8f9fa;
-            transform: translateX(-5px); /* Sleek slide-out effect on hover */
-            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
-        }
-
-        .modern-float-btn .icon {
-            margin-right: 10px;
-            font-size: 16px;
-        }
-
-        /* Color Coding Accents via Left Border instead of full background */
-        .modern-float-btn.alert-critical { border-left: 4px solid #dc3545; }
-        .modern-float-btn.alert-safe { border-left: 4px solid #28a745; }
-        .modern-float-btn.ai-forecast { border-left: 4px solid #6610f2; }
-        .modern-float-btn.map-tools { border-left: 4px solid #003366; }
-        .modern-float-btn.sys-activity { border-left: 4px solid #212529; }
-
-        /* The little red bouncing pill for active alerts */
-        .modern-float-btn .badge {
-            background: #dc3545;
-            color: white;
-            padding: 2px 6px;
-            border-radius: 12px;
-            font-size: 11px;
-            margin-left: auto;
-            animation: pulse-red 2s infinite;
-        }
-    </style>
+    
 </head>
 
 <body>
@@ -309,10 +222,15 @@ $stmt->execute();
         <div id="map"></div>
         
         <div class="map-buttons-modern">
-            <?php if ($total_critical_cases > 0): ?>
+            <?php if (!empty($critical_hotspots)): ?>
                 <button id="alertTriggerBtn" class="modern-float-btn alert-critical" onclick="toggleAlertSidebar()">
-                    <span class="icon"></span> Alerts 
-                    <span class="badge"><?= $total_critical_cases ?></span>
+                    <span class="icon"></span> Critical Alert 
+                    <span class="badge"><?= count($critical_hotspots) ?></span>
+                </button>
+            <?php elseif (!empty($monitored_areas)): ?>
+                <button id="alertTriggerBtn" class="modern-float-btn" style="border-left: 4px solid #f57c00;" onclick="toggleAlertSidebar()">
+                    <span class="icon"></span> Monitored
+                    <span class="badge" style="background:#f57c00;"><?= count($monitored_areas) ?></span>
                 </button>
             <?php else: ?>
                 <button id="alertTriggerBtn" class="modern-float-btn alert-safe" onclick="toggleAlertSidebar()">
@@ -328,16 +246,21 @@ $stmt->execute();
                 <span class="icon"></span> Map Tools
             </button>
 
+            <button class="modern-float-btn" style="border-left: 4px solid #6f42c1; color: #6f42c1;" onclick="window.location.href='manage_pins.php'">
+                <span class="icon"></span> Manage Pins
+            </button>
+
             <?php if ($role === 'admin'): ?>
             <button class="modern-float-btn sys-activity" onclick="toggleActivitySidebar()">
-                <span class="icon">📋</span> System Log
+                <span class="icon"></span> System Log
             </button>
             <?php endif; ?>
         </div>
 
         <div class="map-mode-controls">
-            <button type="button" id="btnHeatmapMode" class="map-mode-btn active" title="Heatmap View"><h2 style="margin:0; pointer-events:none;">H</h2></button>
-            <button type="button" id="btnMarkerMode" class="map-mode-btn" title="Marker View"><h2 style="margin:0; pointer-events:none;">M</h2></button>
+            <button type="button" id="btnHeatmapMode" class="map-mode-btn active" title="Heatmap View"><h2 style="margin:0; pointer-events:none;"><i class="fa-solid fa-map"></i></h2></button>
+            <button type="button" id="btnMarkerMode" class="map-mode-btn" title="Marker View"><h2 style="margin:0; pointer-events:none;"><i class="fa-solid fa-map-pin"></i></h2></button>
+            <button type="button" id="btnPinMode" class="map-mode-btn" title="Tactical Pins View"><h2 style="margin:0; pointer-events:none; color: #d32f2f;"><i class="fa-solid fa-location-crosshairs"></i></h2></button>
         </div>
 
         <div class="map-legend-overlay" id="mapLegend">
@@ -394,6 +317,13 @@ $stmt->execute();
                         <?php endforeach; ?>
                     </select>
                 </div>
+                <div class="control-group">
+                    <label>Date Range:</label>
+                    <div style="display:flex; gap:5px; margin-top: 5px;">
+                        <input type="date" id="dateFrom" style="width: 50%; padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
+                        <input type="date" id="dateTo" style="width: 50%; padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
+                    </div>
+                </div>
             </div>
             <div class="widget">
                 <h4>Current Statistics</h4>
@@ -413,14 +343,14 @@ $stmt->execute();
             
             <?php if (empty($critical_hotspots) && empty($monitored_areas)): ?>
                 <div style="text-align: center; padding: 30px 10px;">
-                    <h1 style="font-size: 40px; margin: 0;">🛡️</h1>
+                    <h1 style="font-size: 40px; margin: 0;"></h1>
                     <h3 style="color: #28a745;">City is Stable</h3>
                     <p style="color: #666; font-size: 13px;">No active hotspots detected in any barangay.</p>
                 </div>
             <?php endif; ?>
 
             <?php if (!empty($critical_hotspots)): ?>
-                <h4 style="color: #dc3545; border-bottom: 1px solid #ffcdd2; padding-bottom: 5px;">🔴 CRITICAL HOTSPOTS (3+ Cases)</h4>
+                <h4 style="color: #dc3545; border-bottom: 1px solid #ffcdd2; padding-bottom: 5px;">CRITICAL HOTSPOTS (3+ Cases)</h4>
                 <ul style="list-style: none; padding: 0; margin: 0 0 20px 0;">
                     <?php foreach ($critical_hotspots as $c): ?>
                         <li style="margin-bottom: 8px; border-radius: 4px;">
@@ -477,12 +407,11 @@ $stmt->execute();
                     <canvas id="forecastChart"></canvas>
                 </div>
                 <div style="font-size: 10px; color: #999; margin-top: 15px; border-top: 1px solid #eee; padding-top: 5px; font-style: italic;">
-                    *Algorithm: Holt's Double Exponential Smoothing.
                 </div>
             </div>
 
             <div class="widget" style="margin-top: 20px;">
-                <h4 style="margin: 0 0 10px 0; color: #333;">📈 Emerging Target Areas</h4>
+                <h4 style="margin: 0 0 10px 0; color: #333;"><i class="fa-solid fa-arrow-trend-up"></i> Emerging Target Areas</h4>
                 <p style="font-size: 12px; color: #666; margin-top:0;">Barangays with the highest spike in momentum compared to last month.</p>
                 
                 <?php if (empty($ai_barangay_spikes)): ?>
@@ -546,13 +475,12 @@ $stmt->execute();
     <div id="hotspotToast" style="display:none; position: fixed; top: 90px; right: 20px; width: 320px; background: white; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); border-left: 5px solid #dc3545; z-index: 9999; animation: slideInRight 0.5s ease-out;">
         <div style="padding: 15px; position: relative;">
             <button onclick="dismissToast()" style="position: absolute; top: 10px; right: 10px; background: none; border: none; font-size: 20px; color: #999; cursor: pointer; line-height: 1;">&times;</button>
-            <h4 style="margin: 0 0 8px 0; color: #dc3545; font-size: 15px;">⚠️ Critical Hotspots Detected</h4>
+            <h4 style="margin: 0 0 8px 0; color: #dc3545; font-size: 15px;">Critical Hotspots Detected</h4>
             <p style="margin: 0 0 10px 0; font-size: 12px; color: #666;">The following areas require immediate attention:</p>
             
             <ul style="margin: 0; padding-left: 0; list-style: none; font-size: 13px;">
                 <?php foreach ($critical_hotspots as $c): ?>
                     <li style="margin-bottom: 5px; border-radius: 4px;">
-                        <!-- The clickable link that redirects to cases.php -->
                         <a href="cases.php?barangay=<?= $c['id'] ?>" style="background: #fff5f5; padding: 6px 10px; border-radius: 4px; display: flex; justify-content: space-between; text-decoration: none; color: inherit; border: 1px solid transparent; transition: border 0.2s;" onmouseover="this.style.borderColor='#dc3545'" onmouseout="this.style.borderColor='transparent'">
                             <strong><?= htmlspecialchars($c['official_name']) ?></strong> 
                             <span style="color: #dc3545; font-weight: bold; text-decoration: underline;">View <?= $c['count'] ?> cases &raquo;</span>
@@ -571,13 +499,20 @@ $stmt->execute();
     // 1. INITIALIZATION & GLOBALS
     // ==========================================
     const urlParams = new URLSearchParams(window.location.search);
-    let targetCase = urlParams.get('case');
+    
+    let targetCases = [];
+    if (urlParams.get('case')) targetCases.push(urlParams.get('case').trim());
+    if (urlParams.get('case_a')) targetCases.push(urlParams.get('case_a').trim());
+    if (urlParams.get('case_b')) targetCases.push(urlParams.get('case_b').trim());
+    
+    let hasAutoZoomed = false; 
+    
+    // NEW MAP STATE LOGIC ('heatmap', 'marker', 'pin')
+    let currentMapMode = (targetCases.length > 0) ? 'marker' : 'heatmap';
 
-    let isHeatmapMode = (targetCase && targetCase.trim() !== '') ? false : true;
-
-    const initialLat = targetCase ? (parseFloat(urlParams.get('lat')) || 14.0702) : 14.0702;
-    const initialLng = targetCase ? (parseFloat(urlParams.get('lng')) || 121.3256) : 121.3256;
-    const initialZoom = targetCase ? 18 : 13;
+    const initialLat = targetCases.length > 0 ? (parseFloat(urlParams.get('lat')) || 14.0702) : 14.0702;
+    const initialLng = targetCases.length > 0 ? (parseFloat(urlParams.get('lng')) || 121.3256) : 121.3256;
+    const initialZoom = targetCases.length > 0 ? 18 : 13;
 
     const map = L.map('map').setView([initialLat, initialLng], initialZoom);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors' }).addTo(map);
@@ -585,7 +520,9 @@ $stmt->execute();
     let allIncidents = [];
     let heatmapLayer = null;
     let markerClusterGroup = null;
-
+    let tacticalPinLayer = L.layerGroup().addTo(map); // NEW LAYER FOR PINS
+    
+    let markersArray = [];
     const typeColors = {
         'Phishing': '#f44336', 'Online Fraud': '#ff9800', 'Identity Theft': '#9c27b0', 'Cyber Harassment': '#e91e63', 'Others': '#607d8b'
     };
@@ -593,6 +530,24 @@ $stmt->execute();
     let brgyChoices = null;
     if(document.getElementById('barangayFilter')) {
         brgyChoices = new Choices('#barangayFilter', { searchEnabled: true });
+    }
+
+
+    // Helper for Tactical Pins (UPDATED FOR SVG HEX COLORS)
+    function getPinIcon(hexColor) {
+        const svgIcon = `
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 36" width="30" height="45">
+            <path fill="${hexColor}" stroke="#ffffff" stroke-width="2" d="M12 0C5.373 0 0 5.373 0 12c0 8.4 12 24 12 24s12-15.6 12-24c0-6.627-5.373-12-12-12z"/>
+            <circle cx="12" cy="11" r="5" fill="#ffffff" fill-opacity="0.8"/>
+        </svg>`;
+
+        return L.divIcon({
+            html: svgIcon,
+            className: '', // Removes Leaflet's default white square styling
+            iconSize: [30, 45],
+            iconAnchor: [15, 45],
+            popupAnchor: [0, -40]
+        });
     }
 
     // ==========================================
@@ -679,9 +634,7 @@ $stmt->execute();
     }
 
     window.dismissToast = function() {
-        // Hide the toast
         document.getElementById('hotspotToast').style.display = 'none';
-        // Tell the browser to remember that the user closed it so it survives page refreshes!
         sessionStorage.setItem('cyberpablo_alert_dismissed', 'true');
     }
 
@@ -709,10 +662,14 @@ $stmt->execute();
             })
             .catch(err => console.error("Map Fetch Error:", err));
     }
-
+    
     function renderMap(incidents) {
+        // Clear all layers
         if (heatmapLayer) map.removeLayer(heatmapLayer);
         if (markerClusterGroup) map.removeLayer(markerClusterGroup);
+        tacticalPinLayer.clearLayers();
+        
+        markersArray = []; 
 
         const valid = incidents.filter(inc => {
             const lat = parseFloat(inc.lat), lng = parseFloat(inc.lng);
@@ -721,12 +678,17 @@ $stmt->execute();
 
         const btnH = document.getElementById('btnHeatmapMode');
         const btnM = document.getElementById('btnMarkerMode');
+        const btnP = document.getElementById('btnPinMode');
         const legend = document.getElementById('mapLegend');
 
-        if (isHeatmapMode) {
+        // Reset UI Classes
+        if (btnH) btnH.classList.remove('active');
+        if (btnM) btnM.classList.remove('active');
+        if (btnP) btnP.classList.remove('active');
+        if (legend) legend.style.display = 'none';
+
+        if (currentMapMode === 'heatmap') {
             if (btnH) btnH.classList.add('active');
-            if (btnM) btnM.classList.remove('active');
-            if (legend) legend.style.display = 'none';
 
             const heatData = valid.map(inc => {
                 let severity = 0.5; 
@@ -735,22 +697,54 @@ $stmt->execute();
                 else if (type.includes('Online Fraud') || type.includes('Phishing')) { severity = 0.8; }
                 
                 const incDate = new Date(inc.incident_date);
-                const daysOld = Math.floor((new Date() - incDate) / (1000 * 60 * 60 * 24));
+                const daysOld = Math.abs(Math.floor((new Date() - incDate) / (1000 * 60 * 60 * 24)));
                 let timeWeight = Math.max(0.2, 1.0 - (daysOld / 365));
-                if (daysOld <= 30) timeWeight = 1.2; 
+                if (daysOld <= 30) timeWeight = 1.2;
 
                 return [parseFloat(inc.lat), parseFloat(inc.lng), (severity * 0.6) + (timeWeight * 0.4)];
             });
 
-            heatmapLayer = L.heatLayer(heatData, { radius: 35, blur: 25, maxZoom: 17, gradient: { 0.0: 'blue', 0.4: 'cyan', 0.6: 'lime', 0.8: 'yellow', 1.0: 'red' } }).addTo(map);
+            heatmapLayer = L.heatLayer(heatData, { radius: 35, blur: 25, maxZoom: 17, max: 1.0, gradient: { 0.2: 'blue', 0.4: 'cyan', 0.6: 'lime', 0.8: 'orange', 1.0: 'red' } }).addTo(map);
             
-        } else {
+        } else if (currentMapMode === 'marker') {
             if (btnM) btnM.classList.add('active');
-            if (btnH) btnH.classList.remove('active');
             if (legend) legend.style.display = 'block';
 
-            markerClusterGroup = L.markerClusterGroup({ maxClusterRadius: 50 });
-            let matchedMarker = null; 
+            markerClusterGroup = L.markerClusterGroup({ 
+                maxClusterRadius: 50,
+                iconCreateFunction: function(cluster) {
+                    let childCount = cluster.getChildCount();
+                    let c = ' marker-cluster-';
+                    if (childCount < 10) { c += 'small'; } 
+                    else if (childCount < 100) { c += 'medium'; } 
+                    else { c += 'large'; }
+
+                    let hasTarget = false;
+                    let children = cluster.getAllChildMarkers();
+                    for (let i = 0; i < children.length; i++) {
+                        if (targetCases.includes(children[i].incidentCaseNo)) {
+                            hasTarget = true;
+                            break;
+                        }
+                    }
+
+                    if (hasTarget) {
+                        return new L.DivIcon({
+                            html: '<div style="background-color: #dc3545; color: white;"><span>' + childCount + '</span></div>',
+                            className: 'marker-cluster' + c + ' target-cluster-pulse',
+                            iconSize: new L.Point(40, 40)
+                        });
+                    }
+
+                    return new L.DivIcon({
+                        html: '<div><span>' + childCount + '</span></div>',
+                        className: 'marker-cluster' + c,
+                        iconSize: new L.Point(40, 40)
+                    });
+                }
+            });
+
+            let matchedMarkers = []; 
             
             valid.forEach(inc => {
                 let colorKey = 'Others';
@@ -758,30 +752,104 @@ $stmt->execute();
                     if (inc.incident_type && inc.incident_type.includes(key)) { colorKey = key; break; }
                 }
 
-                const marker = L.circleMarker([inc.lat, inc.lng], {
-                    radius: 8, fillColor: typeColors[colorKey] || '#607d8b', color: '#fff', weight: 2, fillOpacity: 0.8
-                }).bindPopup(`
-                    <div class="popup-title">${inc.case_no}</div>
-                    <div><strong>Type:</strong> ${inc.incident_type}</div>
-                    <div><strong>Brgy:</strong> ${inc.barangay}</div>
-                    <hr style="margin:5px 0; border:0; border-top:1px solid #eee;">
-                    <div><a href="cases.php?search=${inc.case_no}">View Case &raquo;</a></div>
-                `);
+                let isTarget = targetCases.includes((inc.case_no || '').trim());
                 
-                markerClusterGroup.addLayer(marker);
-                if (targetCase && inc.case_no.trim() === targetCase.trim()) { matchedMarker = marker; }
+                let circleOpts = {
+                    radius: isTarget ? 14 : 8, 
+                    fillColor: typeColors[colorKey] || '#607d8b',
+                    color: isTarget ? '#000' : '#fff', 
+                    weight: isTarget ? 3 : 2,
+                    fillOpacity: isTarget ? 1.0 : 0.8,
+                    className: isTarget ? 'pulsing-target-marker' : '' 
+                };
+
+                let popupOpts = isTarget ? { autoClose: false, closeOnClick: false } : {};
+
+                const marker = L.circleMarker([inc.lat, inc.lng], circleOpts).bindPopup(`
+                    <div class="popup-title" style="margin-bottom: 5px; font-weight: bold; color: #003366;">${inc.case_no}</div>
+                    <div style="font-size: 11px; margin-bottom: 3px;"><strong>Type:</strong> ${inc.incident_type}</div>
+                    <div style="font-size: 11px; margin-bottom: 3px;"><strong>Brgy:</strong> ${inc.barangay}</div>
+                    
+                    <div style="background: #f8f9fa; padding: 5px; border-radius: 4px; margin-top: 5px; border: 1px solid #eee;">
+                        <div style="font-size: 11px; color: #2e7d32; margin-bottom: 2px;">
+                            <strong>Victim:</strong> ${inc.complainant || '<i style="color:#999;">Not Specified</i>'}
+                        </div>
+                        <div style="font-size: 11px; color: #c62828;">
+                            <strong>Offender:</strong> ${inc.accused || '<i style="color:#999;">Not Specified</i>'}
+                        </div>
+                    </div>
+                    
+                    <hr style="margin:8px 0; border:0; border-top:1px solid #ddd;">
+                    <div style="text-align: center;">
+                        <a href="cases.php?search=${inc.case_no}" style="font-weight: bold; text-decoration: none;">View Full Details &raquo;</a>
+                    </div>
+                `, popupOpts);
+                
+                marker.incidentCaseNo = inc.case_no;
+                markersArray.push(marker);
+                markerClusterGroup.addLayer(marker); 
+
+                if (isTarget) { matchedMarkers.push(marker); }
+            });
+
+            markerClusterGroup.on('spiderfied', function(e) {
+                matchedMarkers.forEach(m => {
+                    if (e.markers.includes(m)) {
+                        m.openPopup();
+                        let el = m.getElement();
+                        if (el) { el.style.animation = 'none'; setTimeout(() => el.style.animation = '', 10); }
+                    }
+                });
+            });
+
+            markerClusterGroup.on('animationend', function(e) {
+                matchedMarkers.forEach(m => {
+                    if (map.hasLayer(m)) {
+                        if (!m.isPopupOpen()) m.openPopup();
+                        let el = m.getElement();
+                        if (el) { el.style.animation = 'none'; setTimeout(() => el.style.animation = '', 10); }
+                    }
+                });
             });
 
             map.addLayer(markerClusterGroup);
 
-            if (matchedMarker) {
-                markerClusterGroup.zoomToShowLayer(matchedMarker, function() {
-                    matchedMarker.openPopup();
-                    targetCase = null;
+            if (matchedMarkers.length > 0) {
+                if (!hasAutoZoomed) {
+                    if (matchedMarkers.length > 1) {
+                        let group = new L.featureGroup(matchedMarkers);
+                        map.fitBounds(group.getBounds().pad(0.2), {maxZoom: 18});
+                        matchedMarkers.forEach(m => {
+                            markerClusterGroup.zoomToShowLayer(m, function() { m.openPopup(); });
+                        });
+                    } else {
+                        markerClusterGroup.zoomToShowLayer(matchedMarkers[0], function () {
+                            matchedMarkers[0].openPopup();
+                        });
+                    }
+                    hasAutoZoomed = true; 
+                    
                     const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
                     window.history.replaceState({path:cleanUrl},'',cleanUrl);
-                });
+                } else {
+                    matchedMarkers.forEach(m => { if (map.hasLayer(m)) m.openPopup(); });
+                }
             }
+        } else if (currentMapMode === 'pin') {
+            // NEW PIN MODE LOGIC
+            if (btnP) btnP.classList.add('active');
+            
+            fetch('api_pin.php')
+            .then(res => res.json())
+            .then(data => {
+                if(data.success) {
+                    data.data.forEach(pin => {
+                        L.marker([pin.lat, pin.lng], {icon: getPinIcon(pin.color)})
+                         .addTo(tacticalPinLayer)
+                         .bindPopup(`<strong style="font-size:14px; color:#333;">${pin.title}</strong><br><small style="color:#666;">Placed by: ${pin.username}</small>`);
+                    });
+                }
+            });
         }
     }
 
@@ -796,19 +864,26 @@ $stmt->execute();
     // ==========================================
     const btnHeatmap = document.getElementById('btnHeatmapMode');
     const btnMarker = document.getElementById('btnMarkerMode');
+    const btnPin = document.getElementById('btnPinMode');
 
-    if (btnHeatmap && btnMarker) {
+    if (btnHeatmap && btnMarker && btnPin) {
         L.DomEvent.disableClickPropagation(btnHeatmap);
         L.DomEvent.disableClickPropagation(btnMarker);
+        L.DomEvent.disableClickPropagation(btnPin);
 
         btnHeatmap.addEventListener('click', function(e) {
             e.preventDefault();
-            if (!isHeatmapMode) { isHeatmapMode = true; renderMap(allIncidents); }
+            if (currentMapMode !== 'heatmap') { currentMapMode = 'heatmap'; renderMap(allIncidents); }
         });
 
         btnMarker.addEventListener('click', function(e) {
             e.preventDefault();
-            if (isHeatmapMode) { isHeatmapMode = false; renderMap(allIncidents); }
+            if (currentMapMode !== 'marker') { currentMapMode = 'marker'; renderMap(allIncidents); }
+        });
+
+        btnPin.addEventListener('click', function(e) {
+            e.preventDefault();
+            if (currentMapMode !== 'pin') { currentMapMode = 'pin'; renderMap(allIncidents); }
         });
     }
 
@@ -841,10 +916,7 @@ $stmt->execute();
     const criticalCount = <?= $total_critical_cases ?>;
     
     window.addEventListener('load', function() {
-        // Check browser storage: Has the user already dismissed this alert?
         const isDismissed = sessionStorage.getItem('cyberpablo_alert_dismissed');
-        
-        // Only show if there are cases AND the user hasn't closed the toast yet
         if (criticalCount > 0 && !isDismissed) {
             document.getElementById('hotspotToast').style.display = 'block';
         }
