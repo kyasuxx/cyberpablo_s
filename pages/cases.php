@@ -54,8 +54,15 @@ if ($search) {
     $types .= "sssssssss";
 }
 if ($type) { 
-    $sql .= " AND i.incident_type = ?"; 
-    $params[] = $type; 
+    if ($type === 'Others') {
+        // If they select "Others", use LIKE to catch "Others - Anything"
+        $sql .= " AND i.incident_type LIKE ?"; 
+        $params[] = "Others%"; 
+    } else {
+        // Otherwise, do an exact match for the specific R.A. laws
+        $sql .= " AND i.incident_type = ?"; 
+        $params[] = $type; 
+    }
     $types .= "s"; 
 }
 if ($barangay) { 
@@ -158,15 +165,15 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
         <h2>Cases Dashboard (<?= $total ?> Total)</h2>
 
         <div class="stats">
-            <div class="stat-box">
+            <div class="stat-box open_cases">
                 <h3><?= $open_count ?></h3>
                 <p>Open Cases</p>
             </div>
-            <div class="stat-box">
+            <div class="stat-box investigating_cases">
                 <h3><?= $inv_count ?></h3>
                 <p>Investigating</p>
             </div>
-            <div class="stat-box">
+            <div class="stat-box closed_cases">
                 <h3><?= $closed_count ?></h3>
                 <p>Closed</p>
             </div>
@@ -284,7 +291,7 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
                         <a href="?sort=<?= ($sort_order === 'desc') ? 'asc' : 'desc' ?>&search=<?= urlencode($search) ?>&type=<?= urlencode($type) ?>&barangay=<?= urlencode($barangay) ?>&status=<?= $status ?>" 
                         style="color: white; text-decoration: none; display: flex; align-items: center; gap: 5px;">
                             Case No 
-                            <?php if($sort_order === 'asc'): ?> ASC <?php else: ?> DESC <?php endif; ?>
+                            <?php if($sort_order === 'asc'): ?> <i class="fa-solid fa-arrow-up"></i> <?php else: ?> <i class="fa-solid fa-arrow-down"></i> <?php endif; ?>
                         </a>
                     </th>
                     <th>Type</th>
@@ -365,6 +372,12 @@ $years_result = $conn->query("SELECT DISTINCT YEAR(incident_date) as year FROM i
                                     <div class="detail-label">Bail Recommended</div>
                                     <div class="detail-value">
                                         <?= $row['bail_recommended'] ? 'Php ' . number_format($row['bail_recommended'], 2) : 'Not Specified' ?>
+                                    </div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Offense</div>
+                                    <div class="detail-value">
+                                        <?= $row['offense_crime'] ? htmlspecialchars($row['offense_crime']) : 'Not Specified' ?>
                                     </div>
                                 </div>
                             </div>

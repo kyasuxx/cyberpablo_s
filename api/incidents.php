@@ -11,8 +11,8 @@ $sql = "SELECT
             i.incident_date,
             i.status,
             i.modus_operandi,
-            i.accused,         /* <--- NEW */
-            i.complainant,     /* <--- NEW */
+            i.accused, 
+            i.complainant, 
             b.official_name,
             b.alt_name
         FROM incidents i 
@@ -36,13 +36,22 @@ if ($search) {
     $params = array_merge($params, [$like, $like, $like, $like]);
     $types .= "ssss";
 }
-if ($type) { 
-    $sql .= " AND i.incident_type = ?"; 
-    $params[] = $type; 
-    $types .= "s"; 
+
+// 🚨 FIXED THIS BLOCK TO USE $sql .= INSTEAD OF $where[]
+if (!empty($_GET['type'])) {
+    $type_val = $_GET['type'];
+    if ($type_val === 'Others') {
+        $sql .= " AND i.incident_type LIKE ?";
+        $params[] = "Others%";
+    } else {
+        $sql .= " AND i.incident_type = ?";
+        $params[] = $type_val;
+    }
+    $types .= "s";
 }
+
 if ($barangay) { 
-    $sql .= " AND b.id = ?"; // FIX 2: Use integer ID for barangay filter
+    $sql .= " AND b.id = ?"; 
     $params[] = $barangay; 
     $types .= "i"; 
 }
@@ -63,8 +72,9 @@ if ($date_from && $date_to) {
     $params[] = $date_from;
     $types .= "s";
 } elseif ($date_to) {
+    // FIX: Add time to ensure it includes the whole end day
     $sql .= " AND i.incident_date <= ?";
-    $params[] = $date_to;
+    $params[] = $date_to . ' 23:59:59';
     $types .= "s";
 }
 
@@ -108,7 +118,6 @@ while ($row = $result->fetch_assoc()) {
         'incident_date' => $row['incident_date'],
         'status' => $row['status'],
         'modus_operandi' => $row['modus_operandi'],
-        // --- ADD THESE TWO LINES ---
         'accused' => $row['accused'] ?? 'Unknown',
         'complainant' => $row['complainant'] ?? 'Unknown'
     ];

@@ -35,6 +35,18 @@ body {
     padding: 30px;
 }
 
+.stat-box.open_cases p{
+    color: rgb(229, 74, 54);
+}
+
+.stat-box.investigating_cases p{
+    color: rgb(232, 173, 35);
+}
+
+.stat-box.closed_cases p{
+    color: rgb(7, 165, 52);
+}
+
 h2 {
     font-family: var(--font-serif);
     color: var(--color-primary-blue);

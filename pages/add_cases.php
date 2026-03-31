@@ -211,6 +211,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
+        // --- START OF AUDIT LOG INJECTION ---
+        $audit_action = "Added a new cybercrime case: " . $case_no;
+        $audit_query = "INSERT INTO audit_log (user_id, action, timestamp) VALUES (?, ?, NOW())";
+        if ($audit_stmt = $conn->prepare($audit_query)) {
+            $audit_stmt->bind_param("is", $user_id, $audit_action);
+            $audit_stmt->execute();
+            $audit_stmt->close();
+        }
+
         $conn->commit();
         $message = "Success! Case $case_no has been created.";
         $message_type = 'success';

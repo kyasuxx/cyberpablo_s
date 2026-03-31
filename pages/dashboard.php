@@ -292,10 +292,13 @@ $stmt->execute();
                     <label>Incident Type:</label>
                     <select id="typeFilter" style="width: 100%; padding: 8px; margin-top: 5px; border-radius: 4px; border: 1px solid #ccc;">
                         <option value="">All Types</option>
-                        <option value="Phishing">Phishing</option>
-                        <option value="Online Fraud">Online Fraud</option>
-                        <option value="Identity Theft">Identity Theft</option>
-                        <option value="Cyber Harassment">Cyber Harassment</option>
+                        <option value="Republic Act No. 10175 (Phishing)">Phishing</option>
+                        <option value="Republic Act No. 10175 (Online Fraud)">Online Fraud</option>
+                        <option value="Republic Act No. 10175 (Identity Theft)">Identity Theft</option>
+                        <option value="Republic Act No. 10175 (Cyber Harassment)">Cyber Harassment</option>
+                        <option value="Republic Act No. 10175 (Sextortion)">Sextortion</option>
+                        <option value="Republic Act No. 10175 (Online Libel)">Online Libel</option>
+                        <option value="Republic Act No. 10175 (Hacking)">Hacking</option>
                         <option value="Others">Others</option>
                     </select>
                 </div>
@@ -648,15 +651,21 @@ $stmt->execute();
         
         ids.forEach(id => {
             const el = document.getElementById(id);
-            if (el) url.searchParams.set(params[id], el.value);
+            // Only append the parameter if the user actually selected something
+            if (el && el.value !== '') {
+                let val = el.value;
+                // FIX: Append 23:59:59 to include all crimes on the exact End Date
+                if (id === 'dateTo') val += ' 23:59:59'; 
+                url.searchParams.set(params[id], val);
+            }
         });
 
-        url.searchParams.set('_t', new Date().getTime());
+        url.searchParams.set('_t', new Date().getTime()); // Prevent aggressive caching
 
         fetch(url, { cache: 'no-store' })
             .then(res => res.json())
             .then(data => {
-                allIncidents = data;
+                allIncidents = data || [];
                 renderMap(allIncidents);
                 updateStats(allIncidents);
             })
@@ -836,7 +845,6 @@ $stmt->execute();
                 }
             }
         } else if (currentMapMode === 'pin') {
-            // NEW PIN MODE LOGIC
             if (btnP) btnP.classList.add('active');
             
             fetch('api_pin.php')
@@ -887,17 +895,28 @@ $stmt->execute();
         });
     }
 
-    ['typeFilter', 'statusFilter', 'barangayFilter', 'dateFrom', 'dateTo'].forEach(id => {
+    // THE FIX: Force the map to reload whenever ANY dropdown or date is touched.
+    ['typeFilter', 'statusFilter', 'dateFrom', 'dateTo'].forEach(id => {
         const el = document.getElementById(id);
-        if(el) el.addEventListener('change', loadIncidents);
+        if(el) {
+            el.addEventListener('change', loadIncidents);
+            el.addEventListener('input', loadIncidents); // Catch edge-cases
+        }
     });
+
+    if (brgyChoices) {
+        brgyChoices.passedElement.element.addEventListener('change', loadIncidents);
+    } else if (document.getElementById('barangayFilter')) {
+        document.getElementById('barangayFilter').addEventListener('change', loadIncidents);
+    }
 
     let searchTimeout = null;
     const searchInput = document.getElementById('searchFilter');
     if (searchInput) {
         searchInput.addEventListener('keyup', function() {
             clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(() => { loadIncidents(); }, 500);
+            // Lowered timeout to 300ms so it feels instantly responsive!
+            searchTimeout = setTimeout(() => { loadIncidents(); }, 300);
         });
     }
 
@@ -946,7 +965,10 @@ $stmt->execute();
         })
         .catch(err => console.error("Error loading borders:", err));
 
-    window.addEventListener('DOMContentLoaded', function() {
+    // ==========================================
+    // 6. INITIALIZE DASHBOARD (FIXED TIMING)
+    // ==========================================
+    function initDashboard() {
         if(document.getElementById('searchFilter')) document.getElementById('searchFilter').value = '';
         if(document.getElementById('typeFilter')) document.getElementById('typeFilter').value = '';
         if(document.getElementById('statusFilter')) document.getElementById('statusFilter').value = '';
@@ -954,7 +976,14 @@ $stmt->execute();
         if(document.getElementById('dateTo')) document.getElementById('dateTo').value = '';
         if (brgyChoices) brgyChoices.setChoiceByValue(''); 
         loadIncidents();
-    });
+    }
+
+    // Force execution immediately if the page is already loaded, preventing the "Blank Map" bug
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initDashboard);
+    } else {
+        initDashboard();
+    }
 </script>
 </body>
 </html>
