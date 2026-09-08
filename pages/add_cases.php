@@ -1,10 +1,9 @@
 <?php
 session_start();
 require_once 'config/connection.php';
-require_once 'spatial_helper.php'; // <-- ADDED: The Spatial Geofencing Tool
+require_once 'spatial_helper.php'; 
 require_once '../vendor/autoload.php';
 
-// 1. --- Check Authentication ---
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit;
@@ -14,7 +13,7 @@ $user_id = $_SESSION['user_id'];
 $message = '';
 $message_type = '';
 
-// 2. --- Fetch Data for Autocomplete & Dropdowns ---
+
 $barangays = $conn->query("SELECT id, official_name, alt_name, lat, lng FROM barangays ORDER BY official_name");
 $barangay_data = [];
 while ($b = $barangays->fetch_assoc()) {
@@ -33,7 +32,6 @@ while ($p = $presult->fetch_assoc()) {
     $prosecutors[] = $p;
 }
 
-// 3. --- Generate a New Case Number ---
 $year = date('Y');
 $stmt = $conn->prepare("SELECT case_no FROM incidents WHERE case_no LIKE ? ORDER BY case_no DESC LIMIT 1");
 $like_pattern = "CYBER-" . $year . "-%";
@@ -49,8 +47,6 @@ if ($last_case) {
 }
 $new_case_no = "CYBER-" . $year . "-" . str_pad($new_case_num_int, 4, '0', STR_PAD_LEFT);
 
-
-// 4. --- Handle Form Submission (POST Request) ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $conn->begin_transaction();
@@ -60,13 +56,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $incident_date = $_POST['incident_date'];
         $status = $_POST['status'];
         $modus = $_POST['modus_operandi'];
-
-        // --- CUSTOM CRIME CHECK ---
         if ($incident_type === 'Others' && !empty(trim($_POST['other_specify']))) {
             $incident_type = 'Others - ' . trim($_POST['other_specify']);
         }
 
-        // --- SPATIAL GEOFENCING AUTO-CORRECTOR ---
         $final_barangay = $_POST['barangay'];
         $final_barangay_id = $_POST['barangay_id'];
         $final_lat = isset($_POST['lat']) ? (float)$_POST['lat'] : 0.0;
@@ -77,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $true_brgy_name = getTrueBarangayFromGeoJSON($final_lat, $final_lng, $geojson_path);
             
             if ($true_brgy_name) {
-                // Smart Matcher
+    
                 $search1 = $true_brgy_name;
                 $search2 = "Brgy. " . $true_brgy_name;
                 $search3 = "Barangay " . $true_brgy_name;
