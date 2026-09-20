@@ -3,23 +3,23 @@ header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 require_once '../pages/config/connection.php'; // Make sure this path is correct
 
-$sql = "SELECT 
-            i.case_no, 
-            i.incident_type, 
-            i.lat, 
+$sql = "SELECT
+            i.case_no,
+            i.incident_type,
+            i.lat,
             i.lng,
             i.incident_date,
             i.status,
             i.modus_operandi,
-            i.accused, 
-            i.complainant, 
+            i.accused,
+            i.complainant,
             b.official_name,
             b.alt_name
-        FROM incidents i 
+        FROM incidents i
         LEFT JOIN barangays b ON i.barangay_id = b.id
         WHERE 1=1";
 
-$params = []; 
+$params = [];
 $types = "";
 
 // Filters
@@ -31,7 +31,7 @@ $date_from = $_GET['date_from'] ?? '';
 $date_to = $_GET['date_to'] ?? '';
 
 if ($search) {
-    $sql .= " AND (i.case_no LIKE ? OR i.accused LIKE ? OR i.complainant LIKE ? OR i.modus_operandi LIKE ?)"; 
+    $sql .= " AND (i.case_no LIKE ? OR i.accused LIKE ? OR i.complainant LIKE ? OR i.modus_operandi LIKE ?)";
     $like = "%$search%";
     $params = array_merge($params, [$like, $like, $like, $like]);
     $types .= "ssss";
@@ -50,15 +50,15 @@ if (!empty($_GET['type'])) {
     $types .= "s";
 }
 
-if ($barangay) { 
-    $sql .= " AND b.id = ?"; 
-    $params[] = $barangay; 
-    $types .= "i"; 
+if ($barangay) {
+    $sql .= " AND b.id = ?";
+    $params[] = $barangay;
+    $types .= "i";
 }
-if ($status) { 
-    $sql .= " AND i.status = ?"; 
-    $params[] = $status; 
-    $types .= "s"; 
+if ($status) {
+    $sql .= " AND i.status = ?";
+    $params[] = $status;
+    $types .= "s";
 }
 
 // Server-side date filtering logic
@@ -72,7 +72,6 @@ if ($date_from && $date_to) {
     $params[] = $date_from;
     $types .= "s";
 } elseif ($date_to) {
-    // FIX: Add time to ensure it includes the whole end day
     $sql .= " AND i.incident_date <= ?";
     $params[] = $date_to . ' 23:59:59';
     $types .= "s";
@@ -100,8 +99,8 @@ while ($row = $result->fetch_assoc()) {
 
     // SKIP invalid GPS or Dates
     if (
-        $lat == 0 || $lng == 0 || 
-        $lat < -90 || $lat > 90 || 
+        $lat == 0 || $lng == 0 ||
+        $lat < -90 || $lat > 90 ||
         $lng < -180 || $lng > 180 ||
         is_null($row['lat']) || is_null($row['lng']) ||
         is_null($row['incident_date']) // Also skip if date is null
