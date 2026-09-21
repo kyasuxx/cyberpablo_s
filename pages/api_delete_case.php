@@ -49,17 +49,12 @@ while ($row = $file_result->fetch_assoc()) {
 $file_stmt->close();
 
 // 3.5. CLEAN UP GHOST AI REJECTIONS
-// If this case had any AI links rejected by an admin, delete those records.
-// This prevents a future reused case number from inheriting the old rejections.
 $rej_stmt = $conn->prepare("DELETE FROM rejected_links WHERE case_a = ? OR case_b = ?");
 $rej_stmt->bind_param("ss", $case_no, $case_no);
 $rej_stmt->execute();
 $rej_stmt->close();
 
 // 4. DATABASE DELETION
-// (Because you have ON DELETE CASCADE in your SQL, deleting the incident automatically deletes the attachments and status history!)
-
-
 $del_stmt = $conn->prepare("DELETE FROM incidents WHERE id = ?");
 $del_stmt->bind_param("i", $incident_id);
 $del_success = $del_stmt->execute();

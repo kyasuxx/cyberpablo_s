@@ -9,22 +9,22 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
 }
 
 // 2. Fetch Logs (Joined with Users table)
-$sql = "SELECT a.*, u.username, u.role 
-        FROM audit_log a 
-        LEFT JOIN users u ON a.user_id = u.id 
-        ORDER BY a.timestamp DESC 
+$sql = "SELECT a.*, u.username, u.role
+        FROM audit_log a
+        LEFT JOIN users u ON a.user_id = u.id
+        ORDER BY a.timestamp DESC
         LIMIT 500";
 $result = $conn->query($sql);
 
 // 3. LOG SUMMARY CALCULATION (Last 24 Hours)
 $summary_sql = "
-    SELECT 
+    SELECT
         COUNT(*) as total_actions,
         SUM(CASE WHEN action LIKE 'login%' THEN 1 ELSE 0 END) as logins,
         SUM(CASE WHEN action = 'logout' THEN 1 ELSE 0 END) as logouts,
         SUM(CASE WHEN action LIKE '%delete%' OR action LIKE '%reject%' THEN 1 ELSE 0 END) as critical_actions,
         SUM(CASE WHEN action LIKE '%excel_import%' OR action LIKE '%add%' THEN 1 ELSE 0 END) as data_entry
-    FROM audit_log 
+    FROM audit_log
     WHERE timestamp >= NOW() - INTERVAL 1 DAY
 ";
 $summary_res = $conn->query($summary_sql)->fetch_assoc();
@@ -73,7 +73,7 @@ function getActionClass($action) {
     <div class="summary-box">
         <h4>Access (24h)</h4>
         <div class="stat">
-            <span class="text-success"><?= $logins_24h ?> IN</span> / 
+            <span class="text-success"><?= $logins_24h ?> IN</span> /
             <span class="text-muted"><?= $logouts_24h ?> OUT</span>
         </div>
     </div>
@@ -129,10 +129,7 @@ function getActionClass($action) {
 </div>
 
 <script>
-/**
- * Live Table Filter
- * Filters through the table rows based on user input
- */
+
 function filterLogs() {
     let input = document.getElementById("logSearch").value.toLowerCase();
     let rows = document.querySelectorAll(".log-row");

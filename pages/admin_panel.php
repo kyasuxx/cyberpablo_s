@@ -2,21 +2,11 @@
 session_start();
 require_once 'config/connection.php';
 
-// --- PART 1: ANALYTICS DATA FETCHING (Aggregates) ---
-
-// if (!isset($_SESSION['user_id'])) {
-//     header("Location: login.php");
-//     exit;
-// }
-// if ($_SESSION['role'] !== 'admin') {
-//     header("Location: dashboard.php");
-//     exit;
-// }
 
 $trend_labels = [];
 $trend_data = [];
-$month_sql = "SELECT DATE_FORMAT(incident_date, '%M') as month_name, COUNT(*) as count 
-              FROM incidents 
+$month_sql = "SELECT DATE_FORMAT(incident_date, '%M') as month_name, COUNT(*) as count
+              FROM incidents
               WHERE incident_date IS NOT NULL
               GROUP BY DATE_FORMAT(incident_date, '%Y-%m')
               ORDER BY incident_date ASC";
@@ -28,10 +18,10 @@ while($row = $m_result->fetch_assoc()) {
 
 $brgy_labels = [];
 $brgy_data = [];
-$b_sql = "SELECT official_name, COUNT(*) as count 
-          FROM incidents 
-          JOIN barangays ON incidents.barangay_id = barangays.id 
-          GROUP BY barangay_id 
+$b_sql = "SELECT official_name, COUNT(*) as count
+          FROM incidents
+          JOIN barangays ON incidents.barangay_id = barangays.id
+          GROUP BY barangay_id
           ORDER BY count DESC LIMIT 5";
 $b_result = $conn->query($b_sql);
 while($row = $b_result->fetch_assoc()) {
@@ -64,7 +54,7 @@ if ($all_b_sql) {
         }
     }
 }
-// Sort dictionary by length descending so longer names (e.g. "San Lorenzo") match before shorter overlapping ones
+
 usort($barangay_dictionary, function($a, $b) {
     return strlen($b) - strlen($a);
 });
@@ -77,20 +67,19 @@ $rej_result = $conn->query("SELECT case_a, case_b FROM rejected_links");
 if ($rej_result) {
     while($r = $rej_result->fetch_assoc()){
         $rejected_pairs[] = $r['case_a'] . '-' . $r['case_b'];
-        $rejected_pairs[] = $r['case_b'] . '-' . $r['case_a']; 
+        $rejected_pairs[] = $r['case_b'] . '-' . $r['case_a'];
     }
 }
 
 function calculateDistanceKM($lat1, $lon1, $lat2, $lon2) {
     if (!$lat1 || !$lon1 || !$lat2 || !$lon2) return 9999;
-    $earthRadius = 6371; 
+    $earthRadius = 6371;
     $latDelta = deg2rad($lat2 - $lat1);
     $lonDelta = deg2rad($lon2 - $lon1);
     $angle = 2 * asin(sqrt(pow(sin($latDelta / 2), 2) + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * pow(sin($lonDelta / 2), 2)));
     return $angle * $earthRadius;
 }
 
-// ⚠️ THE FIX: Specifically hunts for and extracts known barangays from raw text
 function extractSuspectBarangay($addr, $dict) {
     if (empty($addr)) return '';
     $addr = strtolower(trim($addr));
@@ -98,7 +87,7 @@ function extractSuspectBarangay($addr, $dict) {
     $addr = preg_replace('/\b(sto|santo)\b/', 'santo', $addr);
     $addr = preg_replace('/\b(sta|santa)\b/', 'santa', $addr);
     $addr = trim(preg_replace('/\s+/', ' ', $addr));
-    
+
     foreach ($dict as $b_name) {
         // Uses strict word boundaries to prevent "San" matching inside "San Pablo"
         if (preg_match('/\b' . preg_quote($b_name, '/') . '\b/', $addr)) {
@@ -109,7 +98,7 @@ function extractSuspectBarangay($addr, $dict) {
 }
 
 $cases = [];
-$name_counts = []; // Dictionary to count name frequencies
+$name_counts = [];
 $invalid_identifiers = ['unidentified', 'unknown', 'n/a', 'none', 'unknown suspect', 'pending', '0', 'null', 'alias'];
 $stopwords = ['victim', 'suspect', 'money', 'account', 'scam', 'online', 'bank', 'cash', 'report', 'police', 'person', 'using', 'through', 'pesos', 'from', 'that', 'with', 'were', 'told', 'said', 'asked', 'the', 'and', 'was'];
 
@@ -117,26 +106,26 @@ $result = $conn->query("SELECT id, case_no, incident_type, incident_date, status
 while ($row = $result->fetch_assoc()) {
     $raw_accused = strtolower(trim($row['accused']));
     $check_accused = trim(str_replace(['(', ')', '[', ']', '"', "'", '*'], '', $raw_accused));
-    
+
     $row['is_unidentified'] = in_array($check_accused, $invalid_identifiers) || empty($check_accused) || strlen($check_accused) < 3;
     $row['clean_accused'] = $check_accused;
 
     if (!$row['is_unidentified']) {
         $name_counts[$check_accused] = ($name_counts[$check_accused] ?? 0) + 1;
     }
-    
+
     $clean_modus = preg_replace('/[^a-z0-9 ]+/', '', strtolower($row['modus_operandi']));
     $words = explode(' ', $clean_modus);
-    $row['tokens'] = array_unique(array_filter($words, function($w) use ($stopwords) { 
-        return strlen($w) > 3 && !in_array($w, $stopwords); 
+    $row['tokens'] = array_unique(array_filter($words, function($w) use ($stopwords) {
+        return strlen($w) > 3 && !in_array($w, $stopwords);
     }));
 
     $row['clean_phone'] = preg_replace('/[^0-9]/', '', $row['accused_contact']);
     $row['clean_complainant'] = strtolower(trim($row['complainant']));
-    
-    // Extract the specific barangay keyword (e.g. "santa ana") from the raw address
+
+
     $row['extracted_brgy'] = extractSuspectBarangay($row['accused_address'] ?? '', $barangay_dictionary);
-    
+
     $cases[] = $row;
 }
 
@@ -147,10 +136,10 @@ for ($i = 0; $i < $count; $i++) {
     for ($j = $i + 1; $j < $count; $j++) {
         $c1 = $cases[$i];
         $c2 = $cases[$j];
-        
+
         if ($c1['is_unidentified'] && $c2['is_unidentified']) continue;
         if (in_array($c1['case_no'] . '-' . $c2['case_no'], $rejected_pairs)) continue;
-        
+
         $score = 0;
         $reasons = [];
         $has_core_evidence = false;
@@ -161,7 +150,7 @@ for ($i = 0; $i < $count; $i++) {
             $has_core_evidence = true;
         }
 
-        // ⚠️ THE FIX: DICTIONARY BARANGAY EXTRACTION MATCHING
+
         $raw_a = strtolower(trim($c1['accused_address'] ?? ''));
         $raw_b = strtolower(trim($c2['accused_address'] ?? ''));
 
@@ -175,7 +164,7 @@ for ($i = 0; $i < $count; $i++) {
         } elseif (!empty($raw_a) && !empty($raw_b) && strlen($raw_a) > 10 && !str_contains($raw_a, 'unknown') && !str_contains($raw_a, 'none')) {
             // Fallback: If no barangay was found, require a hyper-strict 90% match on the raw text
             similar_text($raw_a, $raw_b, $percent);
-            if ($percent >= 90) { 
+            if ($percent >= 90) {
                 $score += 40;
                 $reasons[] = "Shared Suspect Address (Exact Match)";
                 $has_core_evidence = true;
@@ -185,7 +174,7 @@ for ($i = 0; $i < $count; $i++) {
         if (!$c1['is_unidentified'] && !$c2['is_unidentified']) {
             $name1 = $c1['clean_accused'];
             $name2 = $c2['clean_accused'];
-            
+
             if ($name1 === $name2) {
                 if ($name_counts[$name1] >= 4) {
                     $score += 25;
@@ -238,7 +227,7 @@ for ($i = 0; $i < $count; $i++) {
         }
 
         if (!empty($c1['incident_date']) && !empty($c2['incident_date'])) {
-            $days_apart = abs(strtotime($c1['incident_date']) - strtotime($c2['incident_date'])) / 86400; 
+            $days_apart = abs(strtotime($c1['incident_date']) - strtotime($c2['incident_date'])) / 86400;
             if ($days_apart <= 7) {
                 $score += 10;
                 $reasons[] = "Timeline Cluster: $days_apart days apart";
@@ -364,36 +353,36 @@ $total_linked_cases = count(array_unique($unique_linked_cases));
             </div>
         </div>
     </div>
-    
+
     <p style="font-size: 13px; color: #666; margin-bottom: 20px; text-align: center;">
         The system assigns confidence scores based on multi-factor heuristic overlaps. <strong>All algorithmic correlations must be manually reviewed and confirmed by an authorized investigator.</strong>
     </p>
 
     <div style="margin-bottom: 40px;">
-        
+
         <?php if (empty($syndicate_links)): ?>
             <div class="card"><p class="empty-msg" style="color: #666; padding: 20px; text-align:center;">No cross-case connections detected in the current database.</p></div>
         <?php else: ?>
-            <?php foreach ($syndicate_links as $index => $link): 
-                if ($link['score'] >= 75) { 
-                    $conf_class = 'conf-high'; 
+            <?php foreach ($syndicate_links as $index => $link):
+                if ($link['score'] >= 75) {
+                    $conf_class = 'conf-high';
                     $border_class = 'border-high';
-                    $conf_text = 'HIGH CONFIDENCE'; 
+                    $conf_text = 'HIGH CONFIDENCE';
                     $card_visibility = '';
-                } elseif ($link['score'] >= 45) { 
-                    $conf_class = 'conf-med'; 
+                } elseif ($link['score'] >= 45) {
+                    $conf_class = 'conf-med';
                     $border_class = 'border-med';
-                    $conf_text = 'MEDIUM CONFIDENCE'; 
+                    $conf_text = 'MEDIUM CONFIDENCE';
                     $card_visibility = '';
-                } else { 
-                    $conf_class = 'conf-low'; 
+                } else {
+                    $conf_class = 'conf-low';
                     $border_class = 'border-low';
-                    $conf_text = 'LOW CONFIDENCE (REVIEW)'; 
-                    $card_visibility = 'low-conf-card'; 
+                    $conf_text = 'LOW CONFIDENCE (REVIEW)';
+                    $card_visibility = 'low-conf-card';
                 }
-                
+
                 $shared_phone = ($link['case_a']['clean_phone'] === $link['case_b']['clean_phone'] && !empty($link['case_a']['clean_phone']));
-                
+
                 // Set the UI flag so it highlights yellow
                 $a_brgy = $link['case_a']['extracted_brgy'];
                 $b_brgy = $link['case_b']['extracted_brgy'];
@@ -409,11 +398,11 @@ $total_linked_cases = count(array_unique($unique_linked_cases));
                     }
                 }
 
-                $shared_name = (!$link['case_a']['is_unidentified'] && !$link['case_b']['is_unidentified'] && 
+                $shared_name = (!$link['case_a']['is_unidentified'] && !$link['case_b']['is_unidentified'] &&
                                (strtolower(trim($link['case_a']['accused'])) === strtolower(trim($link['case_b']['accused']))));
                 $shared_victim = ($link['case_a']['clean_complainant'] === $link['case_b']['clean_complainant'] && !empty($link['case_a']['clean_complainant']));
-                
-                // Determine MO state (Match vs Mismatch)
+
+
                 $mo_overlap_count = count(array_intersect($link['case_a']['tokens'], $link['case_b']['tokens']));
                 $shared_modus = ($mo_overlap_count >= 3);
                 $mo_mismatch = ($mo_overlap_count < 2 && !empty($link['case_a']['tokens']) && !empty($link['case_b']['tokens']));
@@ -439,14 +428,14 @@ $total_linked_cases = count(array_unique($unique_linked_cases));
                                 <?= htmlspecialchars($link['case_a']['status']) ?>
                             </span>
                         </div>
-                        
+
                         <?php if (!$link['case_a']['is_unidentified']): ?>
                         <div class="case-data-row <?= $shared_name ? 'highlight-match' : '' ?>">
                             <span style="color:#666; font-size:10px; display:block; font-weight:normal; text-transform: uppercase;">Suspect Identity</span>
                             <?= htmlspecialchars($link['case_a']['accused']) ?>
                         </div>
                         <?php endif; ?>
-                        
+
                         <?php if (!empty($link['case_a']['clean_phone'])): ?>
                         <div class="case-data-row <?= $shared_phone ? 'highlight-match' : '' ?>">
                             <span style="color:#666; font-size:10px; display:block; font-weight:normal; text-transform: uppercase;">Contact Traced</span>
@@ -493,14 +482,14 @@ $total_linked_cases = count(array_unique($unique_linked_cases));
                                 <?= htmlspecialchars($link['case_b']['status']) ?>
                             </span>
                         </div>
-                        
+
                         <?php if (!$link['case_b']['is_unidentified']): ?>
                         <div class="case-data-row <?= $shared_name ? 'highlight-match' : '' ?>">
                             <span style="color:#666; font-size:10px; display:block; font-weight:normal; text-transform: uppercase;">Suspect Identity</span>
                             <?= htmlspecialchars($link['case_b']['accused']) ?>
                         </div>
                         <?php endif; ?>
-                        
+
                         <?php if (!empty($link['case_b']['clean_phone'])): ?>
                         <div class="case-data-row <?= $shared_phone ? 'highlight-match' : '' ?>">
                             <span style="color:#666; font-size:10px; display:block; font-weight:normal; text-transform: uppercase;">Contact Traced</span>
@@ -539,7 +528,7 @@ $total_linked_cases = count(array_unique($unique_linked_cases));
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                         <a href="cases.php?search=<?= urlencode($link['case_a']['case_no']) ?>" target="_blank" class="btn-investigate">View Case A</a>
                         <a href="cases.php?search=<?= urlencode($link['case_b']['case_no']) ?>" target="_blank" class="btn-investigate">View Case B</a>
-                        
+
                         <a href="dashboard.php?case_a=<?= urlencode($link['case_a']['case_no']) ?>&case_b=<?= urlencode($link['case_b']['case_no']) ?>&lat=<?= $link['case_a']['lat'] ?>&lng=<?= $link['case_a']['lng'] ?>" target="_blank" class="btn-investigate" style="background: #6f42c1; border-color: #5e35b1; color: white;">
                             <i class="fa-solid fa-map-location-dot"></i> Map Both
                         </a>
@@ -570,7 +559,7 @@ $total_linked_cases = count(array_unique($unique_linked_cases));
         clearTimeout(searchDebounceTimeout);
         searchDebounceTimeout = setTimeout(function() {
             filterCases();
-        }, 300); 
+        }, 300);
     }
 
     let caseFrequencies = {};
@@ -579,7 +568,7 @@ $total_linked_cases = count(array_unique($unique_linked_cases));
         document.querySelectorAll('.dossier-card').forEach(card => {
             let headers = card.querySelectorAll('h4');
             if(headers.length === 2) {
-                let c1 = headers[0].textContent.trim(); 
+                let c1 = headers[0].textContent.trim();
                 let c2 = headers[1].textContent.trim();
                 caseFrequencies[c1] = (caseFrequencies[c1] || 0) + 1;
                 caseFrequencies[c2] = (caseFrequencies[c2] || 0) + 1;
@@ -596,7 +585,7 @@ $total_linked_cases = count(array_unique($unique_linked_cases));
             if (window.getComputedStyle(card).display !== 'none') {
                 let caseHeaders = card.querySelectorAll('h4');
                 if(caseHeaders.length === 2) {
-                    uniqueCases.add(caseHeaders[0].textContent.trim()); 
+                    uniqueCases.add(caseHeaders[0].textContent.trim());
                     uniqueCases.add(caseHeaders[1].textContent.trim());
                 }
             }
@@ -628,13 +617,13 @@ $total_linked_cases = count(array_unique($unique_linked_cases));
         let netFilter = document.getElementById('filterNetwork').value;
         let evFilter = document.getElementById('filterEvidence').value;
         let statusFilter = document.getElementById('filterStatus').value;
-        
+
         let cards = document.getElementsByClassName('dossier-card');
 
         for (let i = 0; i < cards.length; i++) {
             let card = cards[i];
             let isMatch = true;
-            let cardText = card.textContent.toLowerCase(); 
+            let cardText = card.textContent.toLowerCase();
 
             if (input !== "" && !cardText.includes(input)) isMatch = false;
 
@@ -666,7 +655,7 @@ $total_linked_cases = count(array_unique($unique_linked_cases));
                     let c1 = headers[0].textContent.trim();
                     let c2 = headers[1].textContent.trim();
                     let maxFreq = Math.max(caseFrequencies[c1], caseFrequencies[c2]);
-                    
+
                     if (netFilter === 'pair' && maxFreq > 1) isMatch = false;
                     if (netFilter === 'cluster' && maxFreq === 1) isMatch = false;
                 }
@@ -680,7 +669,7 @@ $total_linked_cases = count(array_unique($unique_linked_cases));
                 removeHighlight(card);
             }
         }
-        
+
         updateLinkedCasesCount();
     }
 
@@ -689,20 +678,20 @@ $total_linked_cases = count(array_unique($unique_linked_cases));
         marks.forEach(mark => {
             let parent = mark.parentNode;
             parent.replaceChild(document.createTextNode(mark.textContent), mark);
-            parent.normalize(); 
+            parent.normalize();
         });
     }
 
     function applyHighlight(card, input) {
         removeHighlight(card);
         if (input === "") return;
-        
+
         let dataRows = card.querySelectorAll('.case-data-row, h4');
         dataRows.forEach(row => {
             if(row.textContent.toLowerCase().includes(input)) {
                 let escapedInput = input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 let regex = new RegExp("(" + escapedInput + ")(?![^<]*>)", "gi");
-                
+
                 let html = row.innerHTML;
                 row.innerHTML = html.replace(regex, '<mark class="search-highlight" style="background-color: #ffeb3b; padding: 0 2px; border-radius: 2px;">$1</mark>');
             }
@@ -711,20 +700,20 @@ $total_linked_cases = count(array_unique($unique_linked_cases));
 
     function rejectMatch(caseA, caseB, cardId) {
         document.getElementById(cardId).style.display = 'none';
-        
+
         let formData = new FormData();
         formData.append('case_a', caseA);
         formData.append('case_b', caseB);
         fetch('api_reject_match.php', { method: 'POST', body: formData })
         .then(response => response.json())
-        .then(data => { 
-            if(!data.success) { 
-                alert("Warning: Could not save rejection."); 
-                document.getElementById(cardId).style.display = 'block'; 
+        .then(data => {
+            if(!data.success) {
+                alert("Warning: Could not save rejection.");
+                document.getElementById(cardId).style.display = 'block';
             } else {
-                document.getElementById(cardId).remove(); 
-                calculateNetworkSizes(); 
-                updateLinkedCasesCount(); 
+                document.getElementById(cardId).remove();
+                calculateNetworkSizes();
+                updateLinkedCasesCount();
             }
         });
     }
@@ -740,7 +729,7 @@ $total_linked_cases = count(array_unique($unique_linked_cases));
                 alert("Case Link Confirmed! Audit log successfully updated.");
                 let card = document.getElementById(cardId);
                 card.style.opacity = '0.5';
-                card.style.pointerEvents = 'none'; 
+                card.style.pointerEvents = 'none';
             } else { alert("Warning: Could not save confirmation."); }
         });
     }
@@ -758,42 +747,42 @@ $total_linked_cases = count(array_unique($unique_linked_cases));
         type: 'doughnut',
         data: {
             labels: <?= json_encode($type_labels) ?>,
-            datasets: [{ 
-                data: <?= json_encode($type_data) ?>, 
-                backgroundColor: ['#f44336', '#9c27b0', '#3f51b5', '#009688', '#ff9800', '#795548'] 
+            datasets: [{
+                data: <?= json_encode($type_data) ?>,
+                backgroundColor: ['#f44336', '#9c27b0', '#3f51b5', '#009688', '#ff9800', '#795548']
             }]
         },
-        options: { 
-            responsive: true, 
-            maintainAspectRatio: false, 
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
             layout: { padding: { bottom: 10 } },
-            plugins: { 
-                legend: { 
+            plugins: {
+                legend: {
                     position: 'bottom',
                     labels: { boxWidth: 12, font: { size: 10 }, padding: 10 }
-                } 
-            } 
-        } 
+                }
+            }
+        }
     });
 
     new Chart(document.getElementById('barChart'), {
         type: 'bar',
         data: {
             labels: <?= json_encode($brgy_labels) ?>,
-            datasets: [{ 
-                label: 'Total Incidents', 
-                data: <?= json_encode($brgy_data) ?>, 
+            datasets: [{
+                label: 'Total Incidents',
+                data: <?= json_encode($brgy_data) ?>,
                 backgroundColor: '#d94c23',
                 borderRadius: 4
             }]
         },
-        options: { 
-            responsive: true, 
+        options: {
+            responsive: true,
             maintainAspectRatio: false,
             layout: { padding: { bottom: 25 } },
-            scales: { 
+            scales: {
                 x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 10 }, autoSkip: false } },
-                y: { beginAtZero: true, ticks: { precision: 0 } } 
+                y: { beginAtZero: true, ticks: { precision: 0 } }
             },
             plugins: { legend: { display: false } }
         }
@@ -827,7 +816,7 @@ $total_linked_cases = count(array_unique($unique_linked_cases));
         const btn = document.getElementById('verifyBtn');
         const errorDiv = document.getElementById('otpError');
         if (code.length !== 6) { errorDiv.innerText = "Please enter a 6-digit code."; errorDiv.style.display = 'block'; return; }
-        
+
         btn.innerText = "Verifying...";
         btn.disabled = true;
 
@@ -836,12 +825,12 @@ $total_linked_cases = count(array_unique($unique_linked_cases));
         .then(data => {
             btn.innerText = "Verify & Download";
             btn.disabled = false;
-            if(data.success) { 
-                closeModal(); 
-                window.location.href = 'export_intelligence.php'; 
-            } else { 
-                errorDiv.innerText = data.message || "Invalid code."; 
-                errorDiv.style.display = 'block'; 
+            if(data.success) {
+                closeModal();
+                window.location.href = 'export_intelligence.php';
+            } else {
+                errorDiv.innerText = data.message || "Invalid code.";
+                errorDiv.style.display = 'block';
             }
         })
         .catch(error => {

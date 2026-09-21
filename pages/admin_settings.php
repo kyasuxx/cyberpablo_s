@@ -17,30 +17,29 @@ $error_msg = '';
 // 2. FORM PROCESSING HANDLERS
 // ==========================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    
+
     // Action: Update Agency Info
     if (isset($_POST['update_agency'])) {
         $agency_name = trim($_POST['agency_name']);
         $branch = trim($_POST['branch']);
-        
+
         $audit = $conn->prepare("INSERT INTO audit_log (user_id, action, ip_address) VALUES (?, 'updated_agency_settings', ?)");
         $audit->bind_param("is", $_SESSION['user_id'], $_SERVER['REMOTE_ADDR']);
         $audit->execute();
-        
+
         $success_msg = "Agency information successfully updated.";
     }
 
     // Action: Clear Audit Logs
     if (isset($_POST['clear_logs'])) {
         try {
-            // Note: Make sure 'timestamp' matches your actual column name in the database!
             $conn->query("DELETE FROM audit_log WHERE timestamp < DATE_SUB(NOW(), INTERVAL 30 DAY)");
             $deleted = $conn->affected_rows;
-            
+
             $audit = $conn->prepare("INSERT INTO audit_log (user_id, action, ip_address) VALUES (?, 'cleared_old_logs', ?)");
             $audit->bind_param("is", $_SESSION['user_id'], $_SERVER['REMOTE_ADDR']);
             $audit->execute();
-            
+
             $success_msg = "System maintenance complete. Removed $deleted old audit log entries.";
         } catch (Exception $e) {
             $error_msg = "Failed to clear logs: " . $conn->error;
@@ -48,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Mock values for the UI
+
 $current_agency = "San Pablo City Police Station";
 $current_branch = "Cybercrime Investigation Division";
 ?>
@@ -112,13 +111,13 @@ $current_branch = "Cybercrime Investigation Division";
                     <h3 style="color: #d32f2f;"><i class="fa-solid fa-folder-minus"></i> Delete Case Record</h3>
                     <p>Permanently delete a specific case number, including all attached digital evidence files and status history logs. <strong>Use with extreme caution.</strong></p>
                 </div>
-                
+
                 <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
                     <a href="delete_cases.php" class="btn-danger" style="text-decoration: none; display: inline-block; padding: 10px 30px; white-space: nowrap;">
                         Deletion Tool
                     </a>
                 <?php endif; ?>
-                
+
             </div>
         </div>
         </div>
@@ -127,9 +126,9 @@ $current_branch = "Cybercrime Investigation Division";
         <div style="background: white; padding: 30px; border-radius: 8px; width: 350px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
             <h2 style="margin-top: 0; color: #2c4e9e;"><i class="fa-solid fa-shield-halved"></i> Security Check</h2>
             <p style="color: #64748b; font-size: 14px; margin-bottom: 20px;" id="otpMessage">An OTP has been sent to your email. Please enter it to authorize the database export.</p>
-            
+
             <input type="text" id="otpInput" placeholder="Enter 6-digit OTP" maxlength="6" style="width: 100%; padding: 12px; margin-bottom: 15px; text-align: center; font-size: 18px; letter-spacing: 5px; border: 1px solid #cbd5e1; border-radius: 6px;">
-            
+
             <div style="display: flex; gap: 10px; justify-content: center;">
                 <button onclick="closeOTPModal()" style="padding: 10px 20px; border: none; background: #e2e8f0; color: #333; border-radius: 6px; cursor: pointer; font-weight: bold;">Cancel</button>
                 <button onclick="verifyOTP()" style="padding: 10px 20px; border: none; background: #2c4e9e; color: white; border-radius: 6px; cursor: pointer; font-weight: bold;">Verify & Download</button>
@@ -148,7 +147,6 @@ $current_branch = "Cybercrime Investigation Division";
             .then(data => {
                 if (data.success) {
                     document.getElementById('otpModal').style.display = 'flex';
-                    console.log("DEV MODE OTP: " + data.dev_otp); 
                 } else {
                     alert(data.message);
                 }

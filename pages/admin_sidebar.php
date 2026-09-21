@@ -1,5 +1,4 @@
 <?php
-// Get the name of the current file to highlight the active link
 $current_page = basename($_SERVER['PHP_SELF']);
 ?>
 
@@ -17,14 +16,14 @@ $current_page = basename($_SERVER['PHP_SELF']);
 
         <div id="adminSidebar" class="admin-sidebar">
             <div class="sidebar-inner" style="display: flex; flex-direction: column; height: 100vh;">
-                
+
                 <div class="sidebar-header">
                     <h2>CyberPablo Admin</h2>
                     <button class="close-btn" onclick="closeAdminSidebar()">&#10005;</button>
                 </div>
 
                 <ul class="sidebar-menu" style="flex-grow: 1; overflow-y: auto;">
-                    
+
                     <li>
                         <a href="add_cases.php" class="<?= $current_page == 'add_cases.php' ? 'active' : '' ?>">
                             <span class="menu-title"><i class="fa-solid fa-plus"></i>New Case Entry</span>
@@ -54,19 +53,19 @@ $current_page = basename($_SERVER['PHP_SELF']);
 
                 <div class="system-health-widget" style="padding: 15px 25px; border-top: 1px solid rgba(255,255,255,0.1);">
                     <h4 style="color: #94a3b8; font-size: 11px; text-transform: uppercase; margin: 0 0 12px 0; letter-spacing: 1px;">System Health</h4>
-                    
+
                     <div style="font-size: 13px; color: #e2e8f0; margin-bottom: 8px; display: flex; align-items: center;">
-                        <i id="status-server-icon" class="fa-solid fa-server" style="color: #4ade80; width: 20px; transition: 0.3s;"></i> 
+                        <i id="status-server-icon" class="fa-solid fa-server" style="color: #4ade80; width: 20px; transition: 0.3s;"></i>
                         <span>Server: <strong id="status-server-text" style="color: #4ade80; margin-left: 5px; transition: 0.3s;">Checking...</strong></span>
                     </div>
-                    
+
                     <div style="font-size: 13px; color: #e2e8f0; margin-bottom: 8px; display: flex; align-items: center;">
-                        <i id="status-db-icon" class="fa-solid fa-database" style="color: #60a5fa; width: 20px; transition: 0.3s;"></i> 
+                        <i id="status-db-icon" class="fa-solid fa-database" style="color: #60a5fa; width: 20px; transition: 0.3s;"></i>
                         <span>Database: <strong id="status-db-text" style="color: #60a5fa; margin-left: 5px; transition: 0.3s;">Checking...</strong></span>
                     </div>
-                    
+
                     <div style="font-size: 13px; color: #e2e8f0; display: flex; align-items: center;">
-                        <i class="fa-solid fa-shield-halved" style="color: #fbbf24; width: 20px;"></i> 
+                        <i class="fa-solid fa-shield-halved" style="color: #fbbf24; width: 20px;"></i>
                         <span>GeoFence: <strong style="color: #fbbf24; margin-left: 5px;">Active</strong></span>
                     </div>
                 </div>
@@ -106,10 +105,10 @@ $current_page = basename($_SERVER['PHP_SELF']);
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 3000); // 3-second timeout
 
-        // ADDED: Cache-busting parameter (?_t=...) and cache: 'no-store'
-        fetch('health_check.php?_t=' + new Date().getTime(), { 
+
+        fetch('health_check.php?_t=' + new Date().getTime(), {
             signal: controller.signal,
-            cache: 'no-store' 
+            cache: 'no-store'
         })
             .then(response => {
                 if (!response.ok) throw new Error("Server response not OK");
@@ -117,31 +116,31 @@ $current_page = basename($_SERVER['PHP_SELF']);
             })
             .then(data => {
                 clearTimeout(timeoutId);
-                
+
                 // 1. Server is responding
-                document.getElementById('status-server-icon').style.color = '#4ade80'; 
+                document.getElementById('status-server-icon').style.color = '#4ade80';
                 document.getElementById('status-server-text').style.color = '#4ade80';
                 document.getElementById('status-server-text').innerText = 'Online';
 
                 // 2. Database Status
                 if (data.database === 'Synced') {
-                    document.getElementById('status-db-icon').style.color = '#60a5fa'; 
+                    document.getElementById('status-db-icon').style.color = '#60a5fa';
                     document.getElementById('status-db-text').style.color = '#60a5fa';
                     document.getElementById('status-db-text').innerText = 'Synced';
                 } else {
-                    document.getElementById('status-db-icon').style.color = '#ef4444'; 
+                    document.getElementById('status-db-icon').style.color = '#ef4444';
                     document.getElementById('status-db-text').style.color = '#ef4444';
                     document.getElementById('status-db-text').innerText = 'Disconnected';
                 }
             })
             .catch(error => {
                 clearTimeout(timeoutId);
-                
-                document.getElementById('status-server-icon').style.color = '#ef4444'; 
+
+                document.getElementById('status-server-icon').style.color = '#ef4444';
                 document.getElementById('status-server-text').style.color = '#ef4444';
                 document.getElementById('status-server-text').innerText = 'Offline';
 
-                document.getElementById('status-db-icon').style.color = '#ef4444'; 
+                document.getElementById('status-db-icon').style.color = '#ef4444';
                 document.getElementById('status-db-text').style.color = '#ef4444';
                 document.getElementById('status-db-text').innerText = 'Disconnected';
             });

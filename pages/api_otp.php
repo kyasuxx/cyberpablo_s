@@ -19,11 +19,10 @@ if (!isset($_SESSION['user_id'])) {
 $action = $_POST['action'] ?? '';
 
 if ($action === 'send') {
-    // Hardcoded email for the defense presentation
-    $recipient_email = 'bachoichoi31@gmail.com'; 
+    $recipient_email = getenv('EXPORT_RECIPIENT_EMAIL');
 
     $otp = rand(100000, 999999);
-    $_SESSION['export_otp'] = (string)$otp; // Force string format
+    $_SESSION['export_otp'] = (string)$otp;
     $_SESSION['export_otp_time'] = time();
 
     $mail = new PHPMailer(true);
@@ -32,13 +31,14 @@ if ($action === 'send') {
         $mail->isSMTP();
         $mail->Host       = 'smtp.gmail.com';
         $mail->SMTPAuth   = true;
-        $mail->Username   = 'bachoichoi31@gmail.com'; 
-        $mail->Password   = 'REDACTED';  
+        // Placeholder
+        $mail->Username = getenv('SMTP_EMAIL');
+        $mail->Password = getenv('SMTP_APP_PASSWORD');
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port       = 587;
 
         $mail->setFrom($mail->Username, 'CyberPablo System');
-        $mail->addAddress($recipient_email); 
+        $mail->addAddress($recipient_email);
 
         $mail->isHTML(true);
         $mail->Subject = 'Security Verification - CyberPablo Data Export';

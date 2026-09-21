@@ -3,7 +3,7 @@ session_start();
 require_once 'config/connection.php';
 
 // IMPORTANT: Include your Composer autoload! Adjust the path if necessary.
-require_once '../vendor/autoload.php'; 
+require_once '../vendor/autoload.php';
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
@@ -21,18 +21,16 @@ $action = $_POST['action'] ?? '';
 if ($action === 'send') {
     $otp = rand(100000, 999999);
     $_SESSION['export_otp'] = $otp;
-    
+
     // Fetch the logged-in admin's email
     $stmt = $conn->prepare("SELECT email FROM users WHERE id = ?");
     $stmt->bind_param("i", $_SESSION['user_id']);
     $stmt->execute();
     $result = $stmt->get_result();
-    
+
     if ($user = $result->fetch_assoc()) {
-        // FOR TESTING: You can temporarily hardcode this to 'bachoichoi31@gmail.com' 
-        // if your database doesn't have the email saved yet!
-        $admin_email = $user['email']; 
-        
+        $admin_email = $user['email'];
+
         // Initialize PHPMailer
         $mail = new PHPMailer(true);
 
@@ -41,13 +39,16 @@ if ($action === 'send') {
             $mail->isSMTP();
             $mail->Host       = 'smtp.gmail.com';
             $mail->SMTPAuth   = true;
-            $mail->Username   = 'bachoichoi31@gmail.com'; // Your sending Gmail address
-            $mail->Password   = 'REDACTED'; // <-- PASTE APP PASSWORD HERE (No spaces)
+
+            // Pull credentials from your .env file
+            $mail->Username   = getenv('SMTP_EMAIL');
+            $mail->Password   = getenv('SMTP_APP_PASSWORD');
+
             $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
             $mail->Port       = 587;
 
-            // Recipients
-            $mail->setFrom('bachoichoi31@gmail.com', 'CyberPablo Security');
+            // Recipients - use the variable rather than a hardcoded string
+            $mail->setFrom($mail->Username, 'CyberPablo Security');
             $mail->addAddress($admin_email); // The admin's email from the DB
 
             // Content
@@ -57,16 +58,16 @@ if ($action === 'send') {
 
             // Send the email
             $mail->send();
-            
+
             echo json_encode([
-                'success' => true, 
+                'success' => true,
                 'message' => 'OTP sent to ' . $admin_email,
-                'dev_otp' => $otp // Keep this while testing!
             ]);
         } catch (Exception $e) {
+            error_log('Mailer Error: ' . $mail->ErrorInfo);
             echo json_encode([
-                'success' => false, 
-                'message' => 'Mailer Error: ' . $mail->ErrorInfo
+                'success' => false,
+                'message' => 'Failed to send OTP. Please try again.'
             ]);
         }
     } else {
@@ -78,10 +79,10 @@ if ($action === 'send') {
 // ACTION 2: VERIFY OTP
 if ($action === 'verify') {
     $input_otp = trim($_POST['otp'] ?? '');
-    
+
     if (isset($_SESSION['export_otp']) && $input_otp == $_SESSION['export_otp']) {
         $_SESSION['export_verified'] = true;
-        unset($_SESSION['export_otp']); 
+        unset($_SESSION['export_otp']);
         echo json_encode(['success' => true]);
     } else {
         echo json_encode(['success' => false, 'message' => 'Invalid OTP. Please try again.']);

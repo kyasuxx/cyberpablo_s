@@ -1,4 +1,5 @@
-vendor/
-*.log
-.DS_Store
 .env
+vendor/
+pages/config/connection.php
+uploads/cases/
+logs/
